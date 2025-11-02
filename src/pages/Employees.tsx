@@ -1,8 +1,9 @@
+// src/pages/Employees.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
-import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -12,267 +13,232 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import {
-  MoreHorizontal,
-  Users,
-  Search,
-  FileDown,
-  Loader2,
-} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; // Komponen form
 
-// Tipe data gabungan dari employees + profiles
-type EmployeeProfile = {
+// Tipe data gabungan dari profiles, employees, dan groups
+export interface EmployeeProfile {
   id: string; // employee_id
+  profile_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  phone: string | null;
+  avatar_url: string | null;
+  status: string;
   position: string | null;
-  profiles: {
-    full_name: string;
-    email: string;
-    avatar_url: string | null;
-    role: string;
-    status: string;
-  } | null;
-  groups: {
-    name: string;
-  } | null;
-};
+  group_name: string | null;
+}
 
 const Employees = () => {
+  const { profile } = useAuth(); // Untuk cek role
+  const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Fungsi untuk mengambil data karyawan
   const fetchEmployees = async () => {
     setLoading(true);
-    // Kita query 'employees' dan join data dari 'profiles' dan 'groups'
-    let query = supabase
-      .from("employees")
-      .select(
-        `
-        id,
-        position,
-        profiles (
-          full_name,
-          email,
-          avatar_url,
-          role,
-          status
-        ),
-        groups (
-          name
-        )
-      `
-      )
-      .order("created_at", { ascending: false });
+    try {
+      // Kita perlu join 3 tabel: employees, profiles, dan groups
+      const { data, error } = await supabase
+        .from("employees")
+        .select(`
+          id,
+          profile_id,
+          position,
+          profiles (
+            full_name,
+            email,
+            role,
+            phone,
+            avatar_url,
+            status
+          ),
+          groups (
+            name
+          )
+        `);
 
-    if (search) {
-      // @ts-ignore
-      query = query.ilike("profiles.full_name", `%${search}%`);
+      if (error) throw error;
+
+      // Map data agar flat dan mudah dibaca tabel
+      const formattedData: EmployeeProfile[] = data.map((emp: any) => ({
+        id: emp.id,
+        profile_id: emp.profile_id,
+        position: emp.position,
+        full_name: emp.profiles.full_name,
+        email: emp.profiles.email,
+        role: emp.profiles.role,
+        phone: emp.profiles.phone,
+        avatar_url: emp.profiles.avatar_url,
+        status: emp.profiles.status,
+        group_name: emp.groups?.name || "Belum ada group",
+      }));
+
+      setEmployees(formattedData);
+    } catch (error: any) {
+      toast.error("Gagal mengambil data karyawan.", {
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
     }
-
-    const { data, error } = await query;
-
-    if (error) {
-      toast.error("Gagal mengambil data karyawan:", error.message);
-      console.error(error);
-    } else {
-      setEmployees(data as EmployeeProfile[]);
-    }
-    setLoading(false);
   };
 
   useEffect(() => {
     fetchEmployees();
-  }, []); // Hanya fetch saat pertama kali load
+  }, []);
 
-  // Handle search (dengan debounce sederhana)
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      fetchEmployees();
-    }, 500); // Tunda pencarian 500ms setelah user berhenti mengetik
-    return () => clearTimeout(handler);
-  }, [search]);
+  // Cek hak akses (sesuai blueprint)
+  const canManage = profile?.role === "superadmin" || profile?.role === "leader";
 
-  // Fungsi untuk mendapatkan inisial nama
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-  
-  // TODO: Hapus Karyawan (butuh RLS dan Supabase Function)
-  const handleDelete = (employeeId: string) => {
-    toast.warning(`Fitur hapus untuk ${employeeId} belum diimplementasikan.`);
-    // Implementasi delete butuh function khusus di Supabase
-    // untuk menghapus data di employees, profiles, dan auth.users
+  // Helper untuk avatar fallback
+  const getAvatarFallback = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header Halaman */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <Users className="h-8 w-8" />
-              Direktori Karyawan
-            </h1>
+            <h1 className="text-3xl font-bold">Direktori Karyawan</h1>
             <p className="text-muted-foreground">
-              Kelola semua akun, profil, dan role karyawan di sistem.
+              Kelola data karyawan, group, dan hak akses.
             </p>
           </div>
-          <div className="flex w-full md:w-auto gap-2">
-            <Button variant="outline" className="gap-2">
-              <FileDown className="h-4 w-4" />
-              Export
+          {canManage && (
+            <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4" />
+              Tambah Karyawan
             </Button>
-            <AddEmployeeDialog onEmployeeAdded={fetchEmployees} />
-          </div>
+          )}
         </div>
 
-        {/* Konten Utama (Tabel) */}
+        {/* Card Tabel Karyawan */}
         <Card>
           <CardHeader>
             <CardTitle>Daftar Karyawan</CardTitle>
             <CardDescription>
               Total {employees.length} karyawan terdaftar.
             </CardDescription>
-            <div className="relative pt-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input
-                placeholder="Cari nama karyawan..."
-                className="pl-10 w-full md:w-1/3"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">Avatar</TableHead>
-                    <TableHead>Nama Karyawan</TableHead>
-                    <TableHead>Jabatan</TableHead>
-                    <TableHead>Group</TableHead>
-                    <TableHead>Role Sistem</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[50px]">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
+            {loading ? (
+              <p>Memuat data...</p>
+            ) : (
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                      </TableCell>
+                      <TableHead>Nama</TableHead>
+                      <TableHead>Jabatan</TableHead>
+                      <TableHead>Kontak</TableHead>
+                      <TableHead>Group</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Role</TableHead>
+                      {canManage && <TableHead>Aksi</TableHead>}
                     </TableRow>
-                  ) : employees.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        Tidak ada data karyawan.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    employees.map((emp) => (
+                  </TableHeader>
+                  <TableBody>
+                    {employees.map((emp) => (
                       <TableRow key={emp.id}>
                         <TableCell>
-                          <Avatar>
-                            <AvatarImage
-                              src={emp.profiles?.avatar_url || ""}
-                              alt={emp.profiles?.full_name}
-                            />
-                            <AvatarFallback>
-                              {getInitials(emp.profiles?.full_name || "??")}
-                            </AvatarFallback>
-                          </Avatar>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">
-                            {emp.profiles?.full_name || "N/A"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {emp.profiles?.email || "N/A"}
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarImage src={emp.avatar_url || ""} />
+                              <AvatarFallback>
+                                {getAvatarFallback(emp.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{emp.full_name}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{emp.position || "-"}</TableCell>
                         <TableCell>
-                          {emp.groups ? (
-                            <Badge variant="outline">{emp.groups.name}</Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              Belum ada
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <User className="h-4 w-4" />
+                            {emp.position || "-"}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="capitalize">
-                            {emp.profiles?.role || "N/A"}
-                          </Badge>
+                          <div className="text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              {emp.email}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Phone className="h-4 w-4 text-muted-foreground" />
+                              {emp.phone || "-"}
+                            </div>
+                          </div>
                         </TableCell>
+                        <TableCell>{emp.group_name}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              emp.profiles?.status === "active"
-                                ? "default"
-                                : "destructive"
-                            }
-                            className="capitalize bg-green-500"
+                          <Badge 
+                            variant={emp.status === "active" ? "default" : "destructive"}
+                            className={emp.status === "active" ? "bg-green-600" : ""}
                           >
-                            {emp.profiles?.status === "active"
-                              ? "Aktif"
-                              : "Tidak Aktif"}
+                            {emp.status}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              <DropdownMenuItem>
-                                Edit Karyawan
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => handleDelete(emp.id)}
-                              >
-                                Hapus Karyawan
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <Badge variant="outline" className="gap-1.5">
+                            <Shield className="h-3.5 w-3.5" />
+                            <span className="capitalize">{emp.role}</span>
+                          </Badge>
                         </TableCell>
+                        {canManage && (
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent>
+                                <DropdownMenuItem>Edit</DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-600">
+                                  Hapus
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        )}
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            {/* TODO: Tambahkan Pagination di sini nanti */}
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            {employees.length === 0 && !loading && (
+               <p className="text-center text-muted-foreground py-4">
+                Belum ada data karyawan.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog Tambah Karyawan */}
+      <AddEmployeeDialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        onSuccess={() => {
+          setIsDialogOpen(false);
+          fetchEmployees(); // Refresh tabel setelah sukses
+        }}
+      />
     </MainLayout>
   );
 };

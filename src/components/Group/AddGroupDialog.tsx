@@ -1,204 +1,270 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+// src/components/Group/AddGroupDialog.tsx
 
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
-
-// Tipe data untuk dropdown leader
-interface LeaderProfile {
-  id: string; // Ini adalah profile_id
-  full_name: string;
-}
-
-// Skema validasi Zod
-const groupFormSchema = z.object({
-  name: z.string().min(3, { message: "Nama grup wajib diisi (min. 3 karakter)." }),
-  description: z.string().optional(),
-  leader_id: z.string().uuid({ message: "Leader harus dipilih." }), // profile_id dari leader
-});
-
-type GroupFormValues = z.infer<typeof groupFormSchema>;
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Loader2, Users, Smartphone, KeyRound } from "lucide-react";
 
 interface AddGroupDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSuccess: () => void; // Untuk refresh list grup
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
-export const AddGroupDialog = ({ open, onOpenChange, onSuccess }: AddGroupDialogProps) => {
+// Tipe data untuk item yang bisa dipilih
+interface SelectableItem {
+  id: string;
+  name: string;
+}
+
+export const AddGroupDialog = ({
+  isOpen,
+  onClose,
+  onSuccess,
+}: AddGroupDialogProps) => {
   const [loading, setLoading] = useState(false);
-  const [leaders, setLeaders] = useState<LeaderProfile[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+  
+  // Form state
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
-  const form = useForm<GroupFormValues>({
-    resolver: zodResolver(groupFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      leader_id: undefined,
-    },
-  });
+  // Data untuk multi-select
+  const [availableEmployees, setAvailableEmployees] = useState<SelectableItem[]>([]);
+  const [availableDevices, setAvailableDevices] = useState<SelectableItem[]>([]);
+  const [availableAccounts, setAvailableAccounts] = useState<SelectableItem[]>([]);
 
-  // Fetch data leader (user dengan role 'leader') untuk dropdown
+  // State untuk item yang dipilih
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+
+  // Ambil data (karyawan, device, akun) yang BELUM Punya Group
   useEffect(() => {
-    if (open) {
-      const fetchLeaders = async () => {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("role", "leader");
-        
-        if (error) {
-          toast.error("Gagal memuat data leader.");
-        } else {
-          setLeaders(data || []);
-        }
-      };
-      fetchLeaders();
-    }
-  }, [open]);
+    if (!isOpen) return;
 
-  const onSubmit = async (values: GroupFormValues) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from("groups")
-        .insert({
-          name: values.name,
-          description: values.description,
-          leader_id: values.leader_id,
-        });
+    const fetchAvailableData = async () => {
+      setLoadingData(true);
+      try {
+        // 1. Ambil karyawan (employees join profiles)
+        const { data: empData, error: empError } = await supabase
+          .from("employees")
+          .select("id, profiles ( full_name )")
+          .is("group_id", null); // <-- Validasi KETAT
+        if (empError) throw empError;
+        setAvailableEmployees(empData.map((e: any) => ({
+          id: e.id,
+          name: e.profiles.full_name,
+        })));
 
-      if (error) {
-        if (error.code === '23505') { // Error unique constraint
-          throw new Error("Nama grup sudah ada. Silakan gunakan nama lain.");
-        }
-        throw error;
+        // 2. Ambil devices
+        const { data: devData, error: devError } = await supabase
+          .from("devices")
+          .select("id, device_id")
+          .is("group_id", null); // <-- Validasi KETAT
+        if (devError) throw devError;
+        setAvailableDevices(devData.map(d => ({ id: d.id, name: d.device_id })));
+
+        // 3. Ambil accounts
+        const { data: accData, error: accError } = await supabase
+          .from("accounts")
+          .select("id, username")
+          .is("group_id", null); // <-- Validasi KETAT
+        if (accError) throw accError;
+        setAvailableAccounts(accData.map(a => ({ id: a.id, name: a.username })));
+
+      } catch (error: any) {
+        toast.error("Gagal memuat data", { description: error.message });
+      } finally {
+        setLoadingData(false);
       }
+    };
 
-      toast.success(`Grup "${values.name}" berhasil dibuat.`);
-      form.reset();
-      onSuccess(); // Panggil callback sukses (refresh list & tutup dialog)
+    fetchAvailableData();
+  }, [isOpen]);
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setSelectedEmployees([]);
+    setSelectedDevices([]);
+    setSelectedAccounts([]);
+  };
+  
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  const handleCheckboxChange = (
+    id: string,
+    list: string[],
+    setter: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    if (list.includes(id)) {
+      setter(list.filter((itemId) => itemId !== id));
+    } else {
+      setter([...list, id]);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    toast.info("Sedang membuat group...");
+
+    try {
+      // Kita panggil fungsi 'create_group_and_assign'
+      // yang akan kita buat di Langkah 3
+      const { error } = await supabase.rpc("create_group_and_assign", {
+        group_name: name,
+        group_desc: description,
+        employee_ids: selectedEmployees,
+        device_ids: selectedDevices,
+        account_ids: selectedAccounts,
+      });
+
+      if (error) throw error;
+
+      toast.success(`Group "${name}" berhasil dibuat!`);
+      onSuccess();
+      handleClose();
+
     } catch (error: any) {
       console.error(error);
-      toast.error(`Terjadi kesalahan: ${error.message}`);
+      toast.error("Gagal membuat group.", { description: error.message });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Buat Grup Baru</DialogTitle>
+          <DialogTitle>Tambah Group Baru</DialogTitle>
           <DialogDescription>
-            Buat grup baru dan tentukan siapa leader yang akan mengelolanya.
+            Buat group baru dan pilih anggota, device, serta akun yang
+            belum ter-assign.
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nama Grup</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Contoh: Grup A (Live Pagi)" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            <FormField
-              control={form.control}
-              name="leader_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Leader Grup</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih leader untuk grup ini..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {leaders.length === 0 && (
-                        <SelectItem value="disabled" disabled>
-                          Memuat data leader...
-                        </SelectItem>
-                      )}
-                      {leaders.map((leader) => (
-                        <SelectItem key={leader.id} value={leader.id}>
-                          {leader.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Info Dasar Group */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nama Group</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Deskripsi (Opsional)</Label>
+              <Input
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Deskripsi (Opsional)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Tulis deskripsi singkat tentang grup ini..."
-                      className="resize-none"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Grup
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+          {/* Multi-Select */}
+          {loadingData ? (
+            <div className="flex justify-center items-center h-40">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {/* Karyawan */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Users className="h-4 w-4" /> Karyawan
+                </Label>
+                <ScrollArea className="h-48 rounded-md border p-2">
+                  {availableEmployees.length > 0 ? (
+                    availableEmployees.map((emp) => (
+                      <div key={emp.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted">
+                        <Checkbox
+                          id={`emp-${emp.id}`}
+                          checked={selectedEmployees.includes(emp.id)}
+                          onCheckedChange={() => handleCheckboxChange(emp.id, selectedEmployees, setSelectedEmployees)}
+                        />
+                        <Label htmlFor={`emp-${emp.id}`} className="font-normal cursor-pointer">{emp.name}</Label>
+                      </div>
+                    ))
+                  ) : <p className="text-xs text-muted-foreground p-2">Semua karyawan sudah punya group.</p>}
+                </ScrollArea>
+              </div>
+
+              {/* Devices */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Smartphone className="h-4 w-4" /> Device
+                </Label>
+                <ScrollArea className="h-48 rounded-md border p-2">
+                  {availableDevices.length > 0 ? (
+                    availableDevices.map((dev) => (
+                      <div key={dev.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted">
+                        <Checkbox
+                          id={`dev-${dev.id}`}
+                          checked={selectedDevices.includes(dev.id)}
+                          onCheckedChange={() => handleCheckboxChange(dev.id, selectedDevices, setSelectedDevices)}
+                        />
+                        <Label htmlFor={`dev-${dev.id}`} className="font-normal cursor-pointer">{dev.name}</Label>
+                      </div>
+                    ))
+                  ) : <p className="text-xs text-muted-foreground p-2">Semua device sudah punya group.</p>}
+                </ScrollArea>
+              </div>
+
+              {/* Akun */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4" /> Akun
+                </Label>
+                <ScrollArea className="h-48 rounded-md border p-2">
+                  {availableAccounts.length > 0 ? (
+                    availableAccounts.map((acc) => (
+                      <div key={acc.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted">
+                        <Checkbox
+                          id={`acc-${acc.id}`}
+                          checked={selectedAccounts.includes(acc.id)}
+                          onCheckedChange={() => handleCheckboxChange(acc.id, selectedAccounts, setSelectedAccounts)}
+                        />
+                        <Label htmlFor={`acc-${acc.id}`} className="font-normal cursor-pointer">{acc.name}</Label>
+                      </div>
+                    ))
+                  ) : <p className="text-xs text-muted-foreground p-2">Semua akun sudah punya group.</p>}
+                </ScrollArea>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={handleClose} disabled={loading}>
+              Batal
+            </Button>
+            <Button type="submit" disabled={loading || loadingData}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Menyimpan..." : "Simpan Group"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

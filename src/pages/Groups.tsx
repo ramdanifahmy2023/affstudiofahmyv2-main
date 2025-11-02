@@ -1,96 +1,110 @@
+// src/pages/Groups.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Package,
-  Plus,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  PlusCircle,
   Users,
   Smartphone,
-  UserCircle,
+  KeyRound,
   Loader2,
+  MoreVertical,
+  Edit,
+  Trash2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-// IMPORT BARU:
+import { useAuth } from "@/contexts/AuthContext";
 import { AddGroupDialog } from "@/components/Group/AddGroupDialog";
+import { DeleteGroupAlert } from "@/components/Group/DeleteGroupAlert";
+// --- IMPOR BARU ---
+import { EditGroupDialog } from "@/components/Group/EditGroupDialog";
+// --- AKHIR IMPOR BARU ---
 
-// Tipe data yang akan kita fetch
-type GroupData = {
+interface GroupData {
   id: string;
   name: string;
   description: string | null;
-  profiles: { // Data Leader dari relasi 'leader_id'
-    full_name: string;
-  } | null;
-  employees: { count: number }[]; // Supabase mengembalikan count sebagai array
-  devices: { count: number }[];
-  accounts: { count: number }[];
-};
+  employee_count: number;
+  device_count: number;
+  account_count: number;
+}
 
 const Groups = () => {
   const { profile } = useAuth();
-  const [groups, setGroups] = useState<GroupData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false); // State untuk dialog
+  const [groups, setGroups] = useState<GroupData[]>([]);
 
-  // Cek hak akses untuk CRUD
-  const canManageGroups =
-    profile?.role === "superadmin" || profile?.role === "leader";
+  // State untuk dialog
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  // --- STATE BARU ---
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  // --- AKHIR STATE BARU ---
+  const [selectedGroup, setSelectedGroup] = useState<GroupData | null>(null);
 
-  // Fungsi untuk mengambil data grup beserta relasinya
   const fetchGroups = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("groups")
-        .select(
-          `
-          id,
-          name,
-          description,
-          profiles ( full_name ),
-          employees ( count ),
-          devices ( count ),
-          accounts ( count )
-        `
-        );
-
+      const { data, error } = await supabase.rpc("get_group_stats");
       if (error) throw error;
-      setGroups(data as any); 
+      setGroups(data || []);
     } catch (error: any) {
-      toast.error("Gagal memuat data grup.");
-      console.error(error);
+      toast.error("Gagal mengambil data group.", {
+        description: error.message,
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // Panggil fetchGroups saat komponen dimuat
   useEffect(() => {
     fetchGroups();
   }, []);
 
-  const handleCreateGroup = () => {
-    setIsModalOpen(true); // <-- FUNGSI INI SEKARANG BERISI
+  const canManage = profile?.role === "superadmin" || profile?.role === "leader";
+
+  const handleOpenDeleteAlert = (group: GroupData) => {
+    setSelectedGroup(group);
+    setIsAlertOpen(true);
   };
+
+  // --- HANDLER DIPERBARUI ---
+  const handleOpenEditDialog = (group: GroupData) => {
+    setSelectedGroup(group);
+    setIsEditDialogOpen(true); // <--- INI DIA
+  };
+  // --- AKHIR HANDLER DIPERBARUI ---
 
   return (
     <MainLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Manage Groups</h1>
+            <h1 className="text-3xl font-bold">Manage Group</h1>
             <p className="text-muted-foreground">
-              Kelola grup tim dan alokasi aset.
+              Kelola tim, device, dan akun affiliate Anda.
             </p>
           </div>
-          {canManageGroups && (
-            <Button className="gap-2" onClick={handleCreateGroup}>
-              <Plus className="h-4 w-4" />
-              Buat Grup Baru
+          {canManage && (
+            <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4" />
+              Tambah Group Baru
             </Button>
           )}
         </div>
@@ -101,106 +115,114 @@ const Groups = () => {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {groups.map((group) => {
-              const employeeCount = group.employees[0]?.count ?? 0;
-              const deviceCount = group.devices[0]?.count ?? 0;
-              const accountCount = group.accounts[0]?.count ?? 0;
-              const leaderName = group.profiles?.full_name || "Belum diatur";
+            {groups.map((group) => (
+              <Card key={group.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle>{group.name}</CardTitle>
+                      <CardDescription>
+                        {group.description || "Tidak ada deskripsi."}
+                      </CardDescription>
+                    </div>
+                    {canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleOpenEditDialog(group)}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Group
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleOpenDeleteAlert(group)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Hapus Group
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Karyawan</span>
+                    </div>
+                    <span className="text-sm font-bold">
+                      {group.employee_count}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Device</span>
+                    </div>
+                    <span className="text-sm font-bold">
+                      {group.device_count}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-muted rounded-md">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Akun</span>
+                    </div>
+                    <span className="text-sm font-bold">
+                      {group.account_count}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
 
-              return (
-                <Card
-                  key={group.id}
-                  className="hover:shadow-lg transition-shadow"
-                >
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-lg bg-primary/10 p-2">
-                          <Package className="h-6 w-6 text-primary" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-lg">
-                            {group.name}
-                          </CardTitle>
-                          <p className="text-sm text-muted-foreground">
-                            Leader: {leaderName}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant="secondary">Aktif</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <Users className="h-4 w-4" />
-                          Karyawan
-                        </span>
-                        <span className="font-medium">{employeeCount}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <Smartphone className="h-4 w-4" />
-                          Devices
-                        </span>
-                        <span className="font-medium">{deviceCount}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground flex items-center gap-2">
-                          <UserCircle className="h-4 w-4" />
-                          Akun
-                        </span>
-                        <span className="font-medium">{accountCount}</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
-                          Total Omset
-                        </span>
-                        <span className="text-lg font-bold text-primary">
-                          Rp 0
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        Lihat Detail
-                      </Button>
-                      {canManageGroups && (
-                        <Button size="sm" className="flex-1">
-                          Kelola
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            
-            {!loading && groups.length === 0 && (
-              <p className="text-muted-foreground col-span-full text-center">
-                Belum ada grup yang dibuat.
+            {groups.length === 0 && (
+              <p className="text-muted-foreground col-span-3 text-center">
+                Belum ada group. Silakan tambahkan group baru.
               </p>
             )}
           </div>
         )}
-
-        {/* Render Dialog Tambah Grup */}
-        {canManageGroups && (
-          <AddGroupDialog
-            open={isModalOpen}
-            onOpenChange={setIsModalOpen}
-            onSuccess={() => {
-              setIsModalOpen(false); // Tutup dialog
-              fetchGroups(); // Refresh data grup
-            }}
-          />
-        )}
       </div>
+
+      {/* --- RENDER SEMUA DIALOG --- */}
+      <AddGroupDialog
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+        onSuccess={() => {
+          setIsAddDialogOpen(false);
+          fetchGroups();
+        }}
+      />
+
+      <DeleteGroupAlert
+        isOpen={isAlertOpen}
+        onClose={() => setIsAlertOpen(false)}
+        group={selectedGroup}
+        onSuccess={() => {
+          setIsAlertOpen(false);
+          fetchGroups();
+        }}
+      />
+
+      <EditGroupDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        group={selectedGroup}
+        onSuccess={() => {
+          setIsEditDialogOpen(false);
+          fetchGroups(); // Refresh data setelah edit
+        }}
+      />
+      {/* --- AKHIR RENDER SEMUA DIALOG --- */}
     </MainLayout>
   );
 };
