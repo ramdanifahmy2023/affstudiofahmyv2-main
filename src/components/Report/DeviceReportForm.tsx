@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client"; // (Asumsi path)
+import { supabase } from "@/integrations/supabase/client"; // Pastikan path ini benar
+import { format } from "date-fns"; // Import 'format' untuk tanggal
 import { toast } from "sonner";
 
 // Tipe data untuk laporan per device
@@ -32,8 +33,7 @@ interface DeviceReportFormProps {
   reportIndex: number;
   onUpdate: (id: string, field: keyof DeviceReport, value: any) => void;
   onRemove: (id: string) => void;
-  // TODO: Ganti data dummy ini dengan fetch dari Supabase
-  devices: { id: string; name: string }[]; 
+  devices: { id: string; name: string }[];
   accounts: { id: string; name: string }[];
 }
 
@@ -62,67 +62,77 @@ export const DeviceReportForm = ({
     return Number(value.replace(/[^0-9]/g, "")) || 0;
   };
 
-  // LOGIC SHIFT & STATUS LIVE (KRUSIAL)
+  // LOGIC SHIFT & STATUS LIVE (KRUSIAL) - VERSI DIPERBAIKI
   useEffect(() => {
     const applyLogic = async () => {
       setWarning(null);
-      
-      // 1. Logic Status Live
+
+      // 1. Logic Status Live "Mati/Relive" (Prioritas utama)
       if (report.liveStatus === "Mati/Relive") {
         onUpdate(report.id, "openingBalance", 0);
         setOpeningBalanceDisabled(true);
         return;
       }
 
-      // 2. Logic Shift
+      // 2. Logic Shift 1
       if (report.shift === "1") {
         onUpdate(report.id, "openingBalance", 0);
         setOpeningBalanceDisabled(true);
         return;
       }
-      
-      // 3. Logic Shift 2/3 (Lancar)
-      setOpeningBalanceDisabled(false);
-      if (report.shift && report.shift !== "1" && report.deviceId && report.liveStatus === "Lancar") {
+
+      // 3. Logic Shift 2/3 (dan Status "Lancar")
+      setOpeningBalanceDisabled(false); // Bisa diisi manual jika fetch gagal
+
+      if (
+        report.shift &&
+        report.shift !== "1" &&
+        report.deviceId &&
+        report.liveStatus === "Lancar"
+      ) {
+        // --- INI ADALAH BAGIAN YANG DISEMPURNAKAN ---
         try {
-          // TODO: Ganti 'device_reports_table' dengan nama tabel Anda
-          // const { data, error } = await supabase
-          //   .from('daily_reports') // atau tabel relasi device
-          //   .select('closing_balance')
-          //   .eq('device_id', report.deviceId)
-          //   .eq('report_date', reportDate.toISOString().split('T')[0])
-          //   .eq('shift', (parseInt(report.shift) - 1).toString())
-          //   .single();
+          // Format tanggal ke YYYY-MM-DD agar cocok dengan query Supabase
+          const formattedDate = format(reportDate, "yyyy-MM-dd");
+          const previousShift = (parseInt(report.shift) - 1).toString();
 
-          // if (error || !data) {
-          //   setWarning("Belum ada data saldo dari shift sebelumnya.");
-          //   onUpdate(report.id, "openingBalance", 0);
-          // } else {
-          //   onUpdate(report.id, "openingBalance", data.closing_balance);
-          // }
-          
-          // Placeholder logic (hapus jika sudah fetch Supabase)
-          if (reportIndex > 0) {
-             setWarning("Ini hanya simulasi, data saldo diambil dari device index sebelumnya.");
-             // onUpdate(report.id, "openingBalance", 100000); // Ganti dengan data fetch
+          const { data, error } = await supabase
+            .from("daily_reports") // Tabel Anda
+            .select("closing_balance")
+            .eq("device_id", report.deviceId) // Kolom baru
+            .eq("report_date", formattedDate)
+            .eq("shift", previousShift) // Kolom yang sudah di-rename
+            .order("created_at", { ascending: false }) // Ambil laporan terbaru
+            .limit(1)
+            .single();
+
+          if (error || !data) {
+            console.warn("Supabase fetch error:", error);
+            setWarning("Belum ada data saldo dari shift sebelumnya.");
+            onUpdate(report.id, "openingBalance", 0);
           } else {
-             setWarning("Simulasi: Belum ada data saldo dari shift sebelumnya.");
-             onUpdate(report.id, "openingBalance", 0);
+            // Sukses! Set Omset Awal = Omset Akhir shift sebelumnya
+            onUpdate(report.id, "openingBalance", data.closing_balance);
+            setOpeningBalanceDisabled(true); // Kunci inputnya
           }
-
         } catch (err) {
+          console.error("Gagal mengambil saldo sebelumnya:", err);
           toast.error("Gagal mengambil saldo sebelumnya.");
           onUpdate(report.id, "openingBalance", 0);
         }
+        // --- AKHIR BAGIAN YANG DISEMPURNAKAN ---
       } else {
-         // Jika shift 2/3 tapi belum pilih device atau status
-         onUpdate(report.id, "openingBalance", 0);
+        // Jika shift 2/3 tapi belum pilih device atau status
+        // atau jika tidak ada shift (kondisi default)
+        if (report.shift !== "1") {
+          onUpdate(report.id, "openingBalance", 0);
+        }
       }
     };
 
     applyLogic();
-  }, [report.shift, report.liveStatus, report.deviceId, reportDate, report.id, onUpdate, reportIndex]);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report.shift, report.liveStatus, report.deviceId, reportDate, report.id, onUpdate]);
 
   return (
     <Card className="border-border/70 relative">
@@ -167,7 +177,9 @@ export const DeviceReportForm = ({
                 </SelectTrigger>
                 <SelectContent>
                   {devices.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -184,7 +196,9 @@ export const DeviceReportForm = ({
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -214,7 +228,9 @@ export const DeviceReportForm = ({
                 id={`kategori-${report.id}`}
                 placeholder="cth: Skincare"
                 value={report.kategoriProduk}
-                onChange={(e) => onUpdate(report.id, "kategoriProduk", e.target.value)}
+                onChange={(e) =>
+                  onUpdate(report.id, "kategoriProduk", e.target.value)
+                }
               />
             </div>
             {/* Omset Awal */}
@@ -227,7 +243,13 @@ export const DeviceReportForm = ({
                 disabled={openingBalanceDisabled}
                 readOnly={openingBalanceDisabled} // Tetap bisa dibaca
                 className={openingBalanceDisabled ? "bg-muted/50" : ""}
-                onChange={(e) => onUpdate(report.id, "openingBalance", parseCurrency(e.target.value))}
+                onChange={(e) =>
+                  onUpdate(
+                    report.id,
+                    "openingBalance",
+                    parseCurrency(e.target.value)
+                  )
+                }
               />
               {warning && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -242,14 +264,22 @@ export const DeviceReportForm = ({
                 id={`closing-${report.id}`}
                 placeholder="Rp 0"
                 value={formatCurrency(report.closingBalance)}
-                onChange={(e) => onUpdate(report.id, "closingBalance", parseCurrency(e.target.value))}
+                onChange={(e) =>
+                  onUpdate(
+                    report.id,
+                    "closingBalance",
+                    parseCurrency(e.target.value)
+                  )
+                }
               />
             </div>
-             {/* Total Omset (Calculated) */}
-             <div className="space-y-2 md:col-span-1">
+            {/* Total Omset (Calculated) */}
+            <div className="space-y-2 md:col-span-1">
               <Label>Total Omset Device</Label>
               <Input
-                value={formatCurrency(report.closingBalance - report.openingBalance)}
+                value={formatCurrency(
+                  report.closingBalance - report.openingBalance
+                )}
                 readOnly
                 disabled
                 className="font-bold text-lg h-10 border-none bg-transparent p-0"

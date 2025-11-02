@@ -1,23 +1,38 @@
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CalendarIcon, FileText, Save, Plus, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext"; // Import useAuth
-import { DeviceReport, DeviceReportForm } from "@/components/Report/DeviceReportForm";
-import { v4 as uuidv4 } from 'uuid'; // Import uuid untuk ID unik
-
-// Hapus import Textarea, Select, dll yang sudah pindah ke DeviceReportForm
+import {
+  DeviceReport,
+  DeviceReportForm,
+} from "@/components/Report/DeviceReportForm";
+import { v4 as uuidv4 } from "uuid"; // Import uuid untuk ID unik
+import { supabase } from "@/integrations/supabase/client"; // <-- IMPORT SUPABASE
+import { format as formatTz } from "date-fns-tz"; // <-- Import untuk format tanggal ISO
 
 // Data dummy (ganti dengan fetch dari Supabase)
+// Anda harus mengganti ini dengan data fetch sesungguhnya
 const dummyDevices = [
   { id: "dev-001", name: "HP-001 (Grup A)" },
   { id: "dev-002", name: "HP-002 (Grup A)" },
@@ -30,9 +45,9 @@ const dummyAccounts = [
   { id: "acc-003", name: "akun_shopee_2" },
 ];
 
-
 const DailyReport = () => {
-  const { profile } = useAuth(); // Gunakan useAuth untuk auto-fill
+  // --- PERUBAHAN DI SINI ---
+  const { profile, employee } = useAuth(); // Ambil 'employee' untuk employee_id
   const [date, setDate] = useState<Date>(new Date());
   const [notes, setNotes] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -58,25 +73,25 @@ const DailyReport = () => {
   // TODO: Fetch available devices & accounts
   useEffect(() => {
     // const fetchDropdownData = async () => {
-    //   if (profile?.group_id) {
+    //   if (profile?.group_id) { // Harusnya dari 'employee.group_id'
     //     // 1. Fetch devices berdasarkan group_id
     //     const { data: devicesData } = await supabase
     //       .from('devices')
-    //       .select('id, device_id')
-    //       .eq('group_id', profile.group_id);
+    //       .select('id, device_id') // ganti 'device_id' dengan 'name' atau kolom yang sesuai
+    //       .eq('group_id', employee.group_id);
     //     setAvailableDevices(devicesData.map(d => ({ id: d.id, name: d.device_id })) || []);
-        
     //     // 2. Fetch accounts berdasarkan group_id
     //     const { data: accountsData } = await supabase
     //       .from('accounts')
     //       .select('id, username')
-    //       .eq('group_id', profile.group_id);
+    //       .eq('group_id', employee.group_id);
     //     setAvailableAccounts(accountsData.map(a => ({ id: a.id, name: a.username })) || []);
     //   }
     // };
-    // fetchDropdownData();
-  }, [profile]);
-
+    // if (employee) {
+    //   fetchDropdownData();
+    // }
+  }, [profile, employee]);
 
   // Handler untuk menambah device report baru
   const addDeviceReport = () => {
@@ -90,7 +105,7 @@ const DailyReport = () => {
         id: uuidv4(),
         deviceId: "",
         accountId: "",
-        shift: "", // Auto-fill dari device sebelumnya? Sesuai spek: "tidak perlu isi ulang", jadi kita ambil dari index 0
+        shift: deviceReports[0]?.shift || "", // Ambil shift dari form pertama
         liveStatus: "",
         kategoriProduk: "",
         openingBalance: 0,
@@ -109,7 +124,11 @@ const DailyReport = () => {
   };
 
   // Handler untuk update data di child component
-  const updateDeviceReport = (id: string, field: keyof DeviceReport, value: any) => {
+  const updateDeviceReport = (
+    id: string,
+    field: keyof DeviceReport,
+    value: any
+  ) => {
     setDeviceReports((prevReports) =>
       prevReports.map((report) =>
         report.id === id ? { ...report, [field]: value } : report
@@ -117,74 +136,77 @@ const DailyReport = () => {
     );
   };
 
-  // Handler untuk submit utama
+  // --- FUNGSI HANDLE SUBMIT DIPERBARUI ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!employee) {
+      toast.error("Gagal memuat data karyawan. Silakan login ulang.");
+      return;
+    }
+
     setLoading(true);
     toast.info("Sedang mengirim laporan...");
 
     // Validasi
     for (const report of deviceReports) {
-      if (!report.shift || !report.deviceId || !report.accountId || !report.liveStatus || !report.kategoriProduk) {
-        toast.error(`Laporan device (ID: ...${report.id.slice(-4)}) belum lengkap.`);
+      if (
+        !report.shift ||
+        !report.deviceId ||
+        !report.accountId ||
+        !report.liveStatus ||
+        !report.kategoriProduk // Anda perlu pastikan kolom 'kategori_produk' ada di tabel
+      ) {
+        toast.error(
+          `Laporan device (ID: ...${report.id.slice(-4)}) belum lengkap.`
+        );
         setLoading(false);
         return;
       }
       if (report.closingBalance < report.openingBalance) {
-         toast.error(`Omset Akhir tidak boleh lebih kecil dari Omset Awal.`);
-         setLoading(false);
-         return;
+        toast.error(
+          `Omset Akhir tidak boleh lebih kecil dari Omset Awal (ID: ...${report.id.slice(
+            -4
+          )}).`
+        );
+        setLoading(false);
+        return;
       }
     }
-    
+
     try {
-      // 1. Simpan Laporan Utama (jika ada tabel master report)
-      // const { data: masterReport, error: masterError } = await supabase
-      //   .from('master_reports') // Ganti nama tabel
-      //   .insert({
-      //     employee_id: profile.employee_id, // Anda perlu expose ini di AuthContext
-      //     report_date: date.toISOString().split('T')[0],
-      //     notes: notes,
-      //   })
-      //   .select('id')
-      //   .single();
+      // Format tanggal ke 'YYYY-MM-DD'
+      const formattedDate = format(date, "yyyy-MM-dd");
       
-      // if (masterError) throw masterError;
+      // Siapkan payload untuk semua device report
+      const reportPayloads = deviceReports.map((report) => ({
+        employee_id: employee.id, // ID dari context
+        report_date: formattedDate,
+        shift: report.shift,
+        device_id: report.deviceId, // Kolom baru
+        account_id: report.accountId, // Kolom baru
+        live_status: report.liveStatus, // Anda perlu pastikan kolom ini ada
+        kategori_produk: report.kategoriProduk, // Anda perlu pastikan kolom ini ada
+        opening_balance: report.openingBalance,
+        closing_balance: report.closingBalance,
+        total_sales: report.closingBalance - report.openingBalance,
+        notes: notes, // Catatan umum di-apply ke setiap row
+      }));
 
-      // 2. Simpan semua device reports
-      // const reportPayloads = deviceReports.map(report => ({
-      //   master_report_id: masterReport.id,
-      //   device_id: report.deviceId,
-      //   account_id: report.accountId,
-      //   shift: report.shift,
-      //   live_status: report.liveStatus,
-      //   kategori_produk: report.kategoriProduk,
-      //   opening_balance: report.openingBalance,
-      //   closing_balance: report.closingBalance,
-      //   total_sales: report.closingBalance - report.openingBalance,
-      //   employee_id: profile.employee_id,
-      //   report_date: date.toISOString().split('T')[0],
-      // }));
+      // Insert semua laporan device sekaligus
+      const { error: deviceError } = await supabase
+        .from("daily_reports") // Langsung ke tabel daily_reports
+        .insert(reportPayloads);
 
-      // const { error: deviceError } = await supabase
-      //   .from('daily_reports') // Ganti nama tabel
-      //   .insert(reportPayloads);
-
-      // if (deviceError) throw deviceError;
+      if (deviceError) throw deviceError;
 
       // 3. Trigger Absen Keluar (Sudah di-handle trigger DB)
-      
-      // Simulasi sukses
-      console.log("Data Laporan:", {
-        report_date: date,
-        notes: notes,
-        devices: deviceReports,
-      });
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulasi API call
+      // Kita asumsikan trigger di DB Anda memantau insert ke 'daily_reports'
+      // berdasarkan 'employee_id' dan 'report_date'
 
       toast.success("Laporan harian berhasil dikirim!");
       toast.info("Absen keluar Anda telah otomatis tercatat.");
-      
+
       // Reset form
       setNotes("");
       setDeviceReports([
@@ -199,10 +221,11 @@ const DailyReport = () => {
           closingBalance: 0,
         },
       ]);
-      
     } catch (error: any) {
       console.error(error);
-      toast.error("Gagal mengirim laporan:", error.message);
+      toast.error(
+        `Gagal mengirim laporan: ${error.message || "Error tidak diketahui"}`
+      );
     } finally {
       setLoading(false);
     }
@@ -220,7 +243,9 @@ const DailyReport = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Jurnal Laporan Harian</h1>
-            <p className="text-muted-foreground">Khusus Staff: Laporan omset harian per shift.</p>
+            <p className="text-muted-foreground">
+              Khusus Staff: Laporan omset harian per shift.
+            </p>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -251,7 +276,11 @@ const DailyReport = () => {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {date ? format(date, "PPP", { locale: indonesiaLocale }) : <span>Pilih tanggal</span>}
+                      {date ? (
+                        format(date, "PPP", { locale: indonesiaLocale })
+                      ) : (
+                        <span>Pilih tanggal</span>
+                      )}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -282,7 +311,7 @@ const DailyReport = () => {
                 <Label htmlFor="employee-group">Group</Label>
                 <Input
                   id="employee-group"
-                  value={profile?.group_id || "Memuat..."} // TODO: Fetch nama group dari group_id
+                  value={employee?.group_id || "Memuat..."} // TODO: Fetch nama group dari employee.group_id
                   disabled
                   readOnly
                   className="bg-muted/50"
@@ -329,9 +358,9 @@ const DailyReport = () => {
             <CardTitle>Ringkasan Laporan</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               {/* Total Omset Hari Ini */}
-               <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Total Omset Hari Ini */}
+              <div className="space-y-2">
                 <Label>Total Omset Keseluruhan</Label>
                 <Input
                   value={new Intl.NumberFormat("id-ID", {
@@ -355,7 +384,7 @@ const DailyReport = () => {
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
-             </div>
+            </div>
           </CardContent>
           <CardFooter className="flex-col items-start gap-4">
             <div className="flex gap-2">
@@ -367,7 +396,8 @@ const DailyReport = () => {
             <div className="flex items-center gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary">
               <AlertCircle className="h-5 w-5" />
               <p>
-                Mengirim laporan ini akan otomatis mencatat <strong>Absen Keluar</strong> Anda untuk hari ini.
+                Mengirim laporan ini akan otomatis mencatat{" "}
+                <strong>Absen Keluar</strong> Anda untuk hari ini.
               </p>
             </div>
           </CardFooter>
