@@ -1,4 +1,4 @@
-// src/components/Employee/AddEmployeeDialog.tsx
+// src/components/Employee/EditEmployeeDialog.tsx
 
 import { useState, useEffect } from "react";
 import {
@@ -22,11 +22,13 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { EmployeeProfile } from "@/pages/Employees"; // Import tipe dari halaman Employees
 
-interface AddEmployeeDialogProps {
+interface EditEmployeeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  employeeToEdit: EmployeeProfile | null; // Data karyawan yang akan diedit
 }
 
 interface Group {
@@ -34,22 +36,22 @@ interface Group {
   name: string;
 }
 
-export const AddEmployeeDialog = ({
+export const EditEmployeeDialog = ({
   isOpen,
   onClose,
   onSuccess,
-}: AddEmployeeDialogProps) => {
+  employeeToEdit,
+}: EditEmployeeDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   
   // Form state
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(""); // Akan di-disable
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
   const [role, setRole] = useState<string>("");
-  const [groupId, setGroupId] = useState<string>(""); // State ini tetap string
+  const [groupId, setGroupId] = useState<string>("");
   const [status, setStatus] = useState("active");
 
   // Ambil data group untuk dropdown
@@ -63,106 +65,84 @@ export const AddEmployeeDialog = ({
     }
   }, [isOpen]);
 
-  const resetForm = () => {
-    setFullName("");
-    setEmail("");
-    setPassword("");
-    setPhone("");
-    setPosition("");
-    setRole("");
-    setGroupId("");
-    setStatus("active");
-  };
-  
+  // Isi form saat dialog dibuka dan employeeToEdit tersedia
+  useEffect(() => {
+    if (employeeToEdit && isOpen) {
+      setFullName(employeeToEdit.full_name || "");
+      setEmail(employeeToEdit.email || "");
+      setPhone(employeeToEdit.phone || "");
+      setPosition(employeeToEdit.position || "");
+      setRole(employeeToEdit.role || "");
+      setGroupId(employeeToEdit.group_id || "no-group");
+      setStatus(employeeToEdit.status || "active");
+    }
+  }, [employeeToEdit, isOpen]);
+
   const handleClose = () => {
-    resetForm();
     onClose();
+    // Reset form bisa ditambahkan di sini jika perlu
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 8) {
-      toast.error("Password minimal harus 8 karakter.");
-      return;
-    }
-    // Validasi tambahan agar 'Pilih Role' tidak lolos
+    if (!employeeToEdit) return; // Safety check
+
+    // Validasi tambahan
     if (!role) {
       toast.error("Role / Hak Akses wajib diisi.");
       return;
     }
 
     setLoading(true);
-    toast.info("Sedang membuat akun karyawan...");
+    toast.info("Sedang memperbarui data karyawan...");
 
     try {
-      // Memanggil Supabase Edge Function 'create-user'
-      const { data, error } = await supabase.functions.invoke("create-user", {
-        body: {
-          email,
-          password,
-          fullName,
-          phone: phone || null, // Pastikan kirim null jika string kosong
-          role,
-          position,
-          // Kirim 'null' jika nilainya "no-group" atau string kosong
-          groupId: (groupId === "no-group" || groupId === "") ? null : groupId,
-          status,
-        },
-      });
+      // 1. Update tabel 'profiles'
+      // Email tidak diupdate karena itu adalah kredensial login
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName,
+          phone: phone || null,
+          role: role,
+          status: status,
+        })
+        .eq("id", employeeToEdit.profile_id);
 
-      // PENTING: Periksa jika error Supabase Function terjadi (misal timeout atau CORS error)
-      if (error) {
-        if (error.status === 500) {
-            toast.error("Gagal menambah karyawan. (Internal Server Error)", {
-                description: "Silakan cek log Deno Function Anda di Supabase. Kemungkinan RLS, Foreign Key, atau Rollback Error.",
-            });
-        } else {
-             // Ini menangani Network/Timeout error yang menyebabkan promise resolved dengan error object
-             toast.error("Gagal menambah karyawan.", {
-                description: error.message || "Terdapat masalah koneksi/server timeout. Silakan coba lagi.",
-            });
-        }
-        
-        throw new Error(error.message); // Lemparkan error agar masuk ke catch block
-      }
-      
-      // PENTING: Periksa jika ada error dari body response (error dari Deno Function)
-      if (data?.error) {
-          toast.error("Gagal menambah karyawan.", {
-              description: data.error || "Pastikan email belum terdaftar atau data grup valid.",
-          });
-          throw new Error(data.error); // Lemparkan error agar masuk ke catch block
-      }
+      if (profileError) throw profileError;
 
+      // 2. Update tabel 'employees'
+      const { error: employeeError } = await supabase
+        .from("employees")
+        .update({
+          position: position || null,
+          group_id: (groupId === "no-group" || groupId === "") ? null : groupId,
+        })
+        .eq("id", employeeToEdit.id); // 'id' di EmployeeProfile adalah employee_id
 
-      toast.success("Karyawan baru berhasil ditambahkan!");
+      if (employeeError) throw employeeError;
+
+      toast.success("Data karyawan berhasil diperbarui!");
       onSuccess();
       handleClose();
 
     } catch (error: any) {
-      // Catch block untuk error yang dilempar dari try
-      if (!error.message.includes("Gagal menambah karyawan")) { 
-          // Hindari double toast jika sudah ditangani di atas
-          toast.error("Gagal menambah karyawan.", {
-              description: error.message || "Pastikan email belum terdaftar.",
-          });
-      }
       console.error(error);
-
+      toast.error("Gagal memperbarui data.", {
+        description: error.message,
+      });
     } finally {
-      // FINALLY BLOCK AKAN SELALU DIEKSEKUSI
       setLoading(false);
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-{/* ... sisa kode JSX tidak berubah ... */}
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Tambah Karyawan Baru</DialogTitle>
+          <DialogTitle>Edit Data Karyawan</DialogTitle>
           <DialogDescription>
-            Akun login akan otomatis dibuatkan.
+            Perbarui detail untuk {employeeToEdit?.full_name || "karyawan"}.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -188,26 +168,19 @@ export const AddEmployeeDialog = ({
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email (untuk login)</Label>
+            <Label htmlFor="email">Email (Login)</Label>
             <Input
               id="email"
               type="email"
-              placeholder="nama@email.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              disabled // Email tidak boleh diganti dari sini
+              readOnly
+              className="cursor-not-allowed"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password (min. 8 karakter)</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+          
+          {/* Hapus field Password, ganti password harusnya di halaman profil */}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="phone">No. HP</Label>
@@ -269,7 +242,7 @@ export const AddEmployeeDialog = ({
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {loading ? "Menyimpan..." : "Simpan Karyawan"}
+              {loading ? "Menyimpan..." : "Update Karyawan"}
             </Button>
           </DialogFooter>
         </form>

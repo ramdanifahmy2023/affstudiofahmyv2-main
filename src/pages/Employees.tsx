@@ -24,7 +24,9 @@ import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; // Komponen form
+import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; // Komponen form Tambah
+import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; // Komponen form Edit (BARU)
+import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; // Komponen alert Hapus (BARU)
 
 // Tipe data gabungan dari profiles, employees, dan groups
 export interface EmployeeProfile {
@@ -38,25 +40,33 @@ export interface EmployeeProfile {
   status: string;
   position: string | null;
   group_name: string | null;
+  group_id: string | null; // <-- PENTING: Ditambahkan untuk Edit
 }
 
 const Employees = () => {
   const { profile } = useAuth(); // Untuk cek role
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  // State untuk dialog
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
 
   // Fungsi untuk mengambil data karyawan
   const fetchEmployees = async () => {
     setLoading(true);
     try {
       // Kita perlu join 3 tabel: employees, profiles, dan groups
+      // Modifikasi query untuk mengambil group_id
       const { data, error } = await supabase
         .from("employees")
         .select(`
           id,
           profile_id,
           position,
+          group_id, 
           profiles (
             full_name,
             email,
@@ -84,6 +94,7 @@ const Employees = () => {
         avatar_url: emp.profiles.avatar_url,
         status: emp.profiles.status,
         group_name: emp.groups?.name || "Belum ada group",
+        group_id: emp.group_id, // <-- PENTING: Ambil group_id
       }));
 
       setEmployees(formattedData);
@@ -108,6 +119,32 @@ const Employees = () => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
+  // Handler untuk membuka dialog
+  const handleOpenEdit = (employee: EmployeeProfile) => {
+    setSelectedEmployee(employee);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleOpenDelete = (employee: EmployeeProfile) => {
+    setSelectedEmployee(employee);
+    setIsAlertOpen(true);
+  };
+
+  // Handler untuk menutup semua dialog/alert
+  const closeAllModals = () => {
+    setIsAddDialogOpen(false);
+    setIsEditDialogOpen(false);
+    setIsAlertOpen(false);
+    setSelectedEmployee(null);
+  };
+
+  // Handler sukses (refresh data)
+  const handleSuccess = () => {
+    closeAllModals();
+    fetchEmployees(); // Refresh tabel setelah sukses
+  };
+
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -119,7 +156,7 @@ const Employees = () => {
             </p>
           </div>
           {canManage && (
-            <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
+            <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
               <PlusCircle className="h-4 w-4" />
               Tambah Karyawan
             </Button>
@@ -207,8 +244,13 @@ const Employees = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent>
-                                <DropdownMenuItem>Edit</DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600">
+                                <DropdownMenuItem onClick={() => handleOpenEdit(emp)}>
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  onClick={() => handleOpenDelete(emp)}
+                                >
                                   Hapus
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -232,12 +274,25 @@ const Employees = () => {
 
       {/* Dialog Tambah Karyawan */}
       <AddEmployeeDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        onSuccess={() => {
-          setIsDialogOpen(false);
-          fetchEmployees(); // Refresh tabel setelah sukses
-        }}
+        isOpen={isAddDialogOpen}
+        onClose={closeAllModals}
+        onSuccess={handleSuccess}
+      />
+
+      {/* Dialog Edit Karyawan (BARU) */}
+      <EditEmployeeDialog
+        isOpen={isEditDialogOpen}
+        onClose={closeAllModals}
+        onSuccess={handleSuccess}
+        employeeToEdit={selectedEmployee}
+      />
+
+      {/* Alert Hapus Karyawan (BARU) */}
+      <DeleteEmployeeAlert
+        isOpen={isAlertOpen}
+        onClose={closeAllModals}
+        onSuccess={handleSuccess}
+        employeeToDelete={selectedEmployee}
       />
     </MainLayout>
   );

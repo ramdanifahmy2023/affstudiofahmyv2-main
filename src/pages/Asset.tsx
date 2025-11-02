@@ -1,5 +1,4 @@
 // src/pages/Asset.tsx
-// KODE LENGKAP & DIPERBARUI (FIX IMPORT)
 
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
@@ -39,22 +38,19 @@ import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 import { id as indonesianLocale } from "date-fns/locale";
 
-// --- PERBAIKAN: Tambahkan 'ResponsiveContainer' di sini ---
+// --- PERBAIKAN: Import ResponsiveContainer & Components ---
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
   Legend,
-  ResponsiveContainer, // <-- INI YANG HILANG
+  ResponsiveContainer, 
 } from "recharts";
-// --------------------------------------------------------
-
-// --- Import Komponen Baru ---
 import { AddAssetDialog } from "@/components/Asset/AddAssetDialog";
-import { EditAssetDialog } from "@/components/Asset/EditAssetDialog";
-import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert";
-// ---------------------------
+import { EditAssetDialog } from "@/components/Asset/EditAssetDialog"; // <-- BARU
+import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert"; // <-- BARU
+// --------------------------------------------------------
 
 // Tipe data dari Supabase (Query lengkap untuk Edit)
 type AssetData = {
@@ -165,6 +161,15 @@ const Assets = () => {
   const handleDeleteClick = (asset: AssetData) => {
     setSelectedAsset(asset);
     setIsDeleteAlertOpen(true);
+  };
+
+  const handleSuccess = () => {
+     // Tutup semua modal dan refresh data
+     setIsAddModalOpen(false);
+     setIsEditModalOpen(false);
+     setIsDeleteAlertOpen(false);
+     setSelectedAsset(null);
+     fetchAssets();
   };
   // -------------------------------------
 
@@ -292,7 +297,7 @@ const Assets = () => {
                           <TableCell className="text-right font-medium">
                             {formatCurrency(asset.purchase_price)}
                           </TableCell>
-                          {/* --- KOLOM ACTIONS BARU --- */}
+                          {/* --- KOLOM ACTIONS DENGAN HANDLER --- */}
                           <TableCell className="text-center">
                             {canManageAssets ? (
                               <DropdownMenu>
@@ -370,35 +375,27 @@ const Assets = () => {
       {/* --- Render Semua Dialog --- */}
        {canManageAssets && (
          <>
+           {/* Tambah Aset Dialog */}
            <AddAssetDialog
              open={isAddModalOpen}
              onOpenChange={setIsAddModalOpen}
-             onSuccess={() => {
-               setIsAddModalOpen(false);
-               fetchAssets();
-             }}
+             onSuccess={handleSuccess}
            />
            
+           {/* Edit Aset Dialog */}
            <EditAssetDialog
              open={isEditModalOpen}
              onOpenChange={setIsEditModalOpen}
              asset={selectedAsset}
-             onSuccess={() => {
-               setIsEditModalOpen(false);
-               setSelectedAsset(null);
-               fetchAssets();
-             }}
+             onSuccess={handleSuccess}
            />
            
+           {/* Delete Aset Alert */}
            <DeleteAssetAlert
              open={isDeleteAlertOpen}
              onOpenChange={setIsDeleteAlertOpen}
              asset={selectedAsset}
-             onSuccess={() => {
-               setIsDeleteAlertOpen(false);
-               setSelectedAsset(null);
-               fetchAssets();
-             }}
+             onSuccess={handleSuccess}
            />
          </>
        )}

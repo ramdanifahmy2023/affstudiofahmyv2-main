@@ -1,12 +1,8 @@
 // src/components/Asset/DeleteAssetAlert.tsx
-// KODE LENGKAP & BENAR
 
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -15,22 +11,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast"; // <-- Import useToast
 
-// Tipe data Aset yang akan dihapus
-type AssetToDelete = {
+// Definisi ulang tipe data (harus sama dengan AssetData di Asset.tsx)
+interface AssetData {
   id: string;
   name: string;
-};
+}
 
 interface DeleteAssetAlertProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  asset: AssetToDelete | null;
   onSuccess: () => void;
+  asset: AssetData | null;
 }
 
-export const DeleteAssetAlert = ({ open, onOpenChange, asset, onSuccess }: DeleteAssetAlertProps) => {
+export const DeleteAssetAlert = ({ open, onOpenChange, onSuccess, asset }: DeleteAssetAlertProps) => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -38,6 +35,7 @@ export const DeleteAssetAlert = ({ open, onOpenChange, asset, onSuccess }: Delet
     if (!asset) return;
 
     setLoading(true);
+    
     try {
       const { error } = await supabase
         .from("assets")
@@ -47,11 +45,11 @@ export const DeleteAssetAlert = ({ open, onOpenChange, asset, onSuccess }: Delet
       if (error) throw error;
 
       toast({
-        title: "Aset Dihapus",
-        description: `Aset "${asset.name}" telah berhasil dihapus.`,
+        title: "Aset Berhasil Dihapus",
+        description: `Aset "${asset.name}" telah dihapus dari inventaris.`,
+        variant: "default",
       });
-      onSuccess(); // Refresh tabel dan tutup modal
-      
+      onSuccess();
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -67,11 +65,10 @@ export const DeleteAssetAlert = ({ open, onOpenChange, asset, onSuccess }: Delet
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Anda yakin ingin menghapus aset ini?</AlertDialogTitle>
+          <AlertDialogTitle>Hapus Aset Ini?</AlertDialogTitle>
           <AlertDialogDescription>
-            Tindakan ini tidak dapat dibatalkan. Ini akan menghapus aset{" "}
-            <span className="font-semibold text-foreground">"{asset?.name}"</span>{" "}
-            secara permanen dari database.
+            Anda yakin ingin menghapus aset <strong>{asset?.name}</strong>?
+            Tindakan ini tidak dapat dibatalkan.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -81,12 +78,7 @@ export const DeleteAssetAlert = ({ open, onOpenChange, asset, onSuccess }: Delet
             onClick={handleDelete}
             disabled={loading}
           >
-            {loading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-2 h-4 w-4" />
-            )}
-            Ya, Hapus
+            {loading ? "Menghapus..." : "Ya, Hapus Aset"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

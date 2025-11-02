@@ -1,3 +1,5 @@
+// src/pages/DebtReceivable.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { AddDebtDialog } from "@/components/Debt/AddDebtDialog";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"; // <-- Dipastikan import ini ada dan benar
 
 // Tipe data dari Supabase
 type DebtData = {
@@ -41,7 +43,7 @@ const DebtReceivable = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Hak akses berdasarkan blueprint [cite: 103, 104, 105]
+  // Hak akses berdasarkan blueprint
   const canCreate =
     profile?.role === "superadmin" ||
     profile?.role === "leader" ||
@@ -115,11 +117,11 @@ const DebtReceivable = () => {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case "Lunas":
-        return <Badge className="bg-success">Lunas</Badge>;
+        return <Badge className="bg-green-600 hover:bg-green-700">Lunas</Badge>; // Menggunakan bg-success (hijau)
       case "Cicilan":
         return <Badge variant="secondary">Cicilan</Badge>;
       case "Belum Lunas":
-        return <Badge variant="destructive">Belum Lunas</Badge>;
+        return <Badge className="bg-red-600 hover:bg-red-700">Belum Lunas</Badge>; // Menggunakan bg-danger (merah)
       default:
         return <Badge variant="outline">{status || "Pending"}</Badge>;
     }
@@ -167,7 +169,8 @@ const DebtReceivable = () => {
               </TableCell>
               {canManage && (
                 <TableCell>
-                  <Button variant="ghost" size="sm">Edit</Button>
+                  {/* TODO: Implement Edit Debt/Receivable Dialog */}
+                  <Button variant="ghost" size="sm" disabled>Edit</Button> 
                 </TableCell>
               )}
             </TableRow>
@@ -243,22 +246,22 @@ const DebtReceivable = () => {
         <Card>
           <CardHeader>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <TabsList>
                   <TabsTrigger value="debt">Hutang (Kewajiban)</TabsTrigger>
                   <TabsTrigger value="receivable">Piutang (Tagihan)</TabsTrigger>
                 </TabsList>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
                       placeholder="Cari nama pihak..." 
-                      className="pl-10 w-64"
+                      className="pl-10 w-full sm:w-64"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" className="gap-2">
+                  <Button variant="outline" className="gap-2 shrink-0">
                     <Download className="h-4 w-4" />
                     Export
                   </Button>
@@ -273,12 +276,12 @@ const DebtReceivable = () => {
                 </div>
             ) : (
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                {/* Hutang Tab [cite: 106] */}
+                {/* Hutang Tab */}
                 <TabsContent value="debt" className="mt-0">
                   {renderTable(debts)}
                 </TabsContent>
 
-                {/* Piutang Tab [cite: 107] */}
+                {/* Piutang Tab */}
                 <TabsContent value="receivable" className="mt-0">
                   {renderTable(receivables)}
                 </TabsContent>

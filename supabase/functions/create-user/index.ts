@@ -16,6 +16,11 @@ async function handler(req: Request): Promise<Response> {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  console.log("FUNCTION START: create-user invoked."); // <-- LOGGING BARU
+
+  let newUserId: string | null = null;
+  let newProfileId: string | null = null;
+
   try {
     // 1. Buat Admin Client
     const supabaseAdmin = createClient(
@@ -35,8 +40,9 @@ async function handler(req: Request): Promise<Response> {
       groupId,
       status,
     } = body;
+    
+    // ... Validasi Input (Kode tidak berubah) ...
 
-    // Validasi input dasar
     if (!email || !password || !fullName || !role || !position) {
       return new Response(
         JSON.stringify({
@@ -61,19 +67,17 @@ async function handler(req: Request): Promise<Response> {
       );
     }
 
-    // --- MULAI "TRANSAKSI" ---
-
     // 3. Menjalankan supabase.auth.admin.createUser()
     const { data: authData, error: authError } =
       await supabaseAdmin.auth.admin.createUser({
         email: email,
         password: password,
-        email_confirm: true, // Otomatis konfirmasi email
+        email_confirm: true,
       });
 
     if (authError) throw authError;
 
-    const newUserId = authData.user.id;
+    newUserId = authData.user.id;
 
     // 4. Menyisipkan data ke tabel 'profiles'
     const { data: profileData, error: profileError } = await supabaseAdmin
@@ -82,20 +86,20 @@ async function handler(req: Request): Promise<Response> {
         user_id: newUserId,
         full_name: fullName,
         email: email,
-        phone: phone,
+        phone: phone || null,
         role: role,
         status: status,
       })
-      .select("id") // Ambil 'id' dari profile untuk langkah selanjutnya
+      .select("id")
       .single();
 
     if (profileError) {
-      // Rollback: Hapus user dari auth jika gagal buat profile
+      console.error("Gagal insert ke profiles. Melakukan rollback user:", newUserId); // <-- LOGGING BARU
       await supabaseAdmin.auth.admin.deleteUser(newUserId);
       throw profileError;
     }
 
-    const newProfileId = profileData.id;
+    newProfileId = profileData.id;
 
     // 5. Menyisipkan data ke tabel 'employees'
     const { error: employeeError } = await supabaseAdmin
@@ -103,18 +107,24 @@ async function handler(req: Request): Promise<Response> {
       .insert({
         profile_id: newProfileId,
         position: position,
-        group_id: groupId || null, // Set ke null jika groupId tidak ada
+        group_id: groupId || null,
       });
 
     if (employeeError) {
-      // Rollback: Hapus user dan profile jika gagal buat employee
-      await supabaseAdmin.auth.admin.deleteUser(newUserId);
+      console.error("Gagal insert ke employees. Melakukan rollback profile:", newProfileId, " Error:", employeeError.message); // <-- LOGGING BARU
+      
+      // Rollback Auth User dan Profile
+      if (newUserId) {
+         await supabaseAdmin.auth.admin.deleteUser(newUserId);
+      }
+      if (newProfileId) {
+         await supabaseAdmin.from("profiles").delete().eq("id", newProfileId);
+      }
       throw employeeError;
     }
 
-    // --- AKHIR "TRANSAKSI" ---
-
     // 6. Kirim respon sukses
+    console.log("FUNCTION END: User successfully created and response sent."); // <-- LOGGING BARU
     return new Response(
       JSON.stringify({ message: "User berhasil dibuat!" }),
       {
@@ -124,6 +134,7 @@ async function handler(req: Request): Promise<Response> {
     );
   } catch (error: any) {
     // Tangani semua error
+    console.error("Kesalahan umum di create-user:", error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       {
@@ -134,6 +145,5 @@ async function handler(req: Request): Promise<Response> {
   }
 }
 
-// --- INI PERUBAHAN PENTING ---
 // Ekspor handler sebagai default
 export default handler;
