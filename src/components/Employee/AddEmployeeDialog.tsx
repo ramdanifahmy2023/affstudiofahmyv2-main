@@ -49,7 +49,7 @@ export const AddEmployeeDialog = ({
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
   const [role, setRole] = useState<string>("");
-  const [groupId, setGroupId] = useState<string>("");
+  const [groupId, setGroupId] = useState<string>(""); // State ini tetap string
   const [status, setStatus] = useState("active");
 
   // Ambil data group untuk dropdown
@@ -85,13 +85,17 @@ export const AddEmployeeDialog = ({
       toast.error("Password minimal harus 8 karakter.");
       return;
     }
+    // Validasi tambahan agar 'Pilih Role' tidak lolos
+    if (!role) {
+      toast.error("Role / Hak Akses wajib diisi.");
+      return;
+    }
+
     setLoading(true);
     toast.info("Sedang membuat akun karyawan...");
 
     try {
-      // INI ADALAH BAGIAN KRUSIAL
       // Memanggil Supabase Edge Function 'create-user'
-      // Function ini yg akan mendaftarkan auth, profiles, dan employees
       const { data, error } = await supabase.functions.invoke("create-user", {
         body: {
           email,
@@ -100,7 +104,10 @@ export const AddEmployeeDialog = ({
           phone,
           role,
           position,
-          groupId: groupId || null, // Kirim null jika tidak dipilih
+          // --- PERUBAHAN LOGIKA DI SINI ---
+          // Kirim 'null' jika nilainya "no-group" atau string kosong
+          groupId: (groupId === "no-group" || groupId === "") ? null : groupId,
+          // --- AKHIR PERUBAHAN ---
           status,
         },
       });
@@ -191,6 +198,7 @@ export const AddEmployeeDialog = ({
                   <SelectValue placeholder="Pilih Role" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Pastikan tidak ada value="" di sini */}
                   <SelectItem value="staff">Staff</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="leader">Leader</SelectItem>
@@ -208,7 +216,9 @@ export const AddEmployeeDialog = ({
                   <SelectValue placeholder="Pilih Group" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tidak ada group</SelectItem>
+                  {/* --- PERBAIKAN ERROR DI SINI --- */}
+                  <SelectItem value="no-group">Tidak ada group</SelectItem>
+                  {/* --- AKHIR PERBAIKAN --- */}
                   {groups.map((g) => (
                     <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                   ))}
