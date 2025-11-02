@@ -1,0 +1,270 @@
+import { MainLayout } from "@/components/Layout/MainLayout";
+import { MetricCard } from "@/components/Dashboard/MetricCard";
+import { Input } from "@/components/ui/input"; // <-- TAMBAHKAN BARIS INI
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DollarSign,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Package,
+  Wallet,
+} from "lucide-react";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+// ... (Data dummy salesData, commissionData, groupData tetap sama) ...
+
+const salesData = [
+  { name: "Mon", sales: 4000, commission: 2400 },
+  { name: "Tue", sales: 3000, commission: 1398 },
+  { name: "Wed", sales: 2000, commission: 9800 },
+  { name: "Thu", sales: 2780, commission: 3908 },
+  { name: "Fri", sales: 1890, commission: 4800 },
+  { name: "Sat", sales: 2390, commission: 3800 },
+  { name: "Sun", sales: 3490, commission: 4300 },
+];
+
+const commissionData = [
+  { name: "Kotor", value: 125000000, color: "hsl(var(--chart-1))" },
+  { name: "Bersih", value: 100000000, color: "hsl(var(--chart-2))" },
+  { name: "Cair", value: 85000000, color: "hsl(var(--chart-3))" },
+];
+
+const groupData = [
+  { name: "Group A", omset: 45000000 },
+  { name: "Group B", omset: 38000000 },
+  { name: "Group C", omset: 32000000 },
+  { name: "Group D", omset: 28000000 },
+  { name: "Group E", omset: 22000000 },
+];
+
+
+const Dashboard = () => {
+  return (
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Filter Global (Placeholder) */}
+        <Card>
+          <CardContent className="pt-6 flex flex-wrap gap-4">
+            {/* Nanti ini akan menjadi komponen filter dinamis */}
+            <Input type="date" className="w-auto" />
+            <Input placeholder="Filter Group" className="w-auto" />
+            <Input placeholder="Filter Karyawan" className="w-auto" />
+          </CardContent>
+        </Card>
+        
+        {/* 6 Metric Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            title="Total Komisi Kotor"
+            value="Rp 125.5M"
+            change={12.5}
+            trend="up"
+            icon={DollarSign}
+          />
+          <MetricCard
+            title="Total Komisi Bersih"
+            value="Rp 100.2M"
+            change={8.2}
+            trend="up"
+            icon={Wallet}
+          />
+          <MetricCard
+            title="Total Komisi Cair"
+            value="Rp 85.8M"
+            change={15.3}
+            trend="up"
+            icon={TrendingUp}
+          />
+          <MetricCard
+            title="Total Pengeluaran"
+            value="Rp 45.5M"
+            change={5.2}
+            trend="down"
+            icon={TrendingDown}
+          />
+          <MetricCard
+            title="Total Karyawan"
+            value="24"
+            icon={Users}
+          />
+          <MetricCard
+            title="Total Group"
+            value="5"
+            icon={Package}
+          />
+        </div>
+
+        {/* Charts Row 1 */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tren Omset & Komisi</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={salesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                    }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="sales"
+                    stroke="hsl(var(--chart-1))"
+                    strokeWidth={2}
+                    name="Omset"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="commission"
+                    stroke="hsl(var(--chart-2))"
+                    strokeWidth={2}
+                    name="Komisi"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Breakdown Komisi</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={commissionData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) =>
+                      `${name} ${(percent * 100).toFixed(0)}%`
+                    }
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {commissionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                    }}
+                    formatter={(value: number) =>
+                      new Intl.NumberFormat("id-ID", {
+                        style: "currency",
+                        currency: "IDR",
+                        minimumFractionDigits: 0,
+                      }).format(value)
+                    }
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts Row 2 (Performa Group) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Performa Group (Top 5)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={groupData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
+                <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "var(--radius)",
+                  }}
+                  formatter={(value: number) =>
+                    new Intl.NumberFormat("id-ID", {
+                      style: "currency",
+                      currency: "IDR",
+                      minimumFractionDigits: 0,
+                    }).format(value)
+                  }
+                />
+                <Bar dataKey="omset" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Ranking Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Ranking Karyawan</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((rank) => (
+                <div
+                  key={rank}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm">
+                    {rank}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Karyawan {rank}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 bg-secondary h-2 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all"
+                          style={{ width: `${100 - rank * 10}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground w-12 text-right">
+                        {100 - rank * 10}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold">
+                      Rp {(50 - rank * 5).toFixed(1)}M
+                    </p>
+                    <p className="text-xs text-muted-foreground">Omset</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </MainLayout>
+  );
+};
+
+export default Dashboard;
