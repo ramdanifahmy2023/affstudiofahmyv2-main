@@ -1,4 +1,4 @@
-// src/components/Cashflow/AddTransactionDialog.tsx
+// src/components/Cashflow/EditTransactionDialog.tsx
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -41,6 +41,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { TransactionData } from "@/pages/Cashflow";
 
 // Skema Zod (disamakan dengan komisi, validasi string)
 const transactionFormSchema = z.object({
@@ -51,7 +52,7 @@ const transactionFormSchema = z.object({
     required_error: "Tipe transaksi wajib dipilih.",
   }),
   category: z.string().min(1, { message: "Kategori wajib diisi." }),
-  amount: z.string() // Validasi string saja, kita parse saat submit
+  amount: z.string()
     .min(1, { message: "Nominal wajib diisi." })
     .refine((val) => !isNaN(parseFloat(val.replace(/[^0-9]/g, ""))), { message: "Harus berupa angka." }),
   description: z.string().min(1, { message: "Deskripsi wajib diisi." }),
@@ -63,13 +64,14 @@ type TransactionFormValues = z.infer<typeof transactionFormSchema>;
 
 type Group = { id: string; name: string };
 
-interface AddTransactionDialogProps {
+interface EditTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  transaction: TransactionData | null;
 }
 
-export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTransactionDialogProps) => {
+export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transaction }: EditTransactionDialogProps) => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -77,17 +79,17 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
   
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionFormSchema),
+    // --- PERBAIKAN: Tambahkan Default Values ---
     defaultValues: {
       transaction_date: new Date(),
       type: undefined,
       category: "",
-      // --- PERBAIKAN DI SINI ---
-      amount: "0", // Ubah dari "" menjadi "0"
-      // --- AKHIR PERBAIKAN ---
+      amount: "0",
       description: "",
       group_id: null,
       proof_url: "",
     },
+    // --- AKHIR PERBAIKAN ---
   });
   
   // Ambil data group
@@ -109,9 +111,24 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
       setCategories([]);
     }
   }, [transactionType]);
+  
+  // Isi form saat dialog dibuka
+  useEffect(() => {
+    if (transaction && open) {
+      form.reset({
+        transaction_date: new Date(transaction.transaction_date + "T00:00:00"),
+        type: transaction.type,
+        category: transaction.category,
+        amount: transaction.amount.toString(), // Ubah number ke string
+        description: transaction.description,
+        group_id: transaction.groups?.id || null,
+        proof_url: transaction.proof_url || "",
+      });
+    }
+  }, [transaction, open, form]);
 
   const onSubmit = async (values: TransactionFormValues) => {
-    if (!profile) return;
+    if (!profile || !transaction) return;
     
     setLoading(true);
     try {
@@ -119,23 +136,24 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
       if (isNaN(finalAmount)) {
         throw new Error("Nominal tidak valid.");
       }
-      
+
       const { error } = await supabase
         .from("cashflow")
-        .insert({
+        .update({
           transaction_date: format(values.transaction_date, "yyyy-MM-dd"),
           type: values.type,
           category: values.category,
           amount: finalAmount, // Kirim sebagai number
           description: values.description,
           proof_url: values.proof_url || null,
-          group_id: values.group_id || null,
+          group_id: values.group_id === "no-group" ? null : (values.group_id || null),
           created_by: profile.id,
-        });
+        })
+        .eq("id", transaction.id);
 
       if (error) throw error;
 
-      toast.success(`Transaksi "${values.description}" berhasil ditambahkan.`);
+      toast.success(`Transaksi "${values.description}" berhasil diperbarui.`);
       form.reset();
       onSuccess();
     } catch (error: any) {
@@ -164,9 +182,9 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Tambah Transaksi Baru</DialogTitle>
+          <DialogTitle>Edit Transaksi</DialogTitle>
           <DialogDescription>
-            Masukkan transaksi pemasukan atau pengeluaran.
+            Perbarui detail transaksi cashflow.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -180,7 +198,7 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
                       className="flex space-x-4"
                     >
                       <FormItem className="flex items-center space-x-2">
@@ -327,7 +345,7 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
               </Button>
               <Button type="submit" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Transaksi
+                Simpan Perubahan
               </Button>
             </DialogFooter>
           </form>
