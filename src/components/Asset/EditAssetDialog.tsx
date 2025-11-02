@@ -1,14 +1,14 @@
-// src/components/Asset/AddAssetDialog.tsx
-// KODE LENGKAP & DIPERBARUI
+// src/components/Asset/EditAssetDialog.tsx
+// KODE LENGKAP & DIPERBARUI (FIX SYNTAX ERROR DI SELECT TRIGGER)
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast"; // <-- PERBAIKAN: Import useToast
-import { format } from "date-fns";
-import { id as indonesianLocale } from "date-fns/locale"; // Untuk format tanggal Bhs. Indonesia
+import { useToast } from "@/components/ui/use-toast";
+import { format, parseISO } from "date-fns";
+import { id as indonesianLocale } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +32,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
+  SelectTrigger, // Pastikan komponen ini diimpor
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,53 +47,50 @@ interface Employee {
   full_name: string;
 }
 
-// Skema validasi Zod berdasarkan blueprint 
-// (Blueprint punya Qty & Harga, Skema DB punya purchase_price (total))
+// Tipe data untuk Aset yang diedit
+type AssetToEdit = {
+  id: string;
+  name: string;
+  category: string;
+  purchase_date: string;
+  purchase_price: number;
+  condition: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+};
+
+// Skema validasi Zod
 const assetFormSchema = z.object({
   purchase_date: z.date({ required_error: "Tanggal pembelian wajib diisi." }),
   name: z.string().min(3, { message: "Nama aset wajib diisi (min. 3 karakter)." }),
   category: z.enum(["Elektronik", "Furniture", "Kendaraan", "Lainnya"], {
     required_error: "Kategori wajib dipilih.",
   }),
-  purchase_price: z.preprocess( // Ini adalah Harga Satuan
+  purchase_price: z.preprocess( // Ini adalah Harga TOTAL
     (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(1, { message: "Harga satuan wajib diisi." })
+    z.number().min(1, { message: "Harga total wajib diisi." })
   ),
-  quantity: z.preprocess(
-    (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
-    z.number().min(1, { message: "Jumlah (Qty) wajib diisi (min. 1)." })
-  ),
-  condition: z.enum(["Baru", "Bekas"], { required_error: "Kondisi wajib dipilih." }),
-  assigned_to: z.string().uuid().optional().nullable(), // employee_id (dari tabel employees)
+  condition: z.enum(["Baru", "Bekas"]).optional().nullable(),
+  assigned_to: z.string().uuid().optional().nullable(), // employee_id
   notes: z.string().optional().nullable(),
-  // Foto (file upload) akan ditangani terpisah
 });
 
 type AssetFormValues = z.infer<typeof assetFormSchema>;
 
-interface AddAssetDialogProps {
+interface EditAssetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void; // Untuk refresh list
+  asset: AssetToEdit | null;
 }
 
-export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialogProps) => {
+export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAssetDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const { toast } = useToast(); // <-- PERBAIKAN: Panggil hook useToast
+  const { toast } = useToast();
 
   const form = useForm<AssetFormValues>({
     resolver: zodResolver(assetFormSchema),
-    defaultValues: {
-      purchase_date: new Date(),
-      name: "",
-      category: undefined,
-      purchase_price: 0,
-      quantity: 1,
-      condition: "Baru",
-      assigned_to: null,
-      notes: "",
-    },
   });
   
   // Helper format mata uang
@@ -107,45 +104,37 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
      return Number(String(value).replace(/[^0-9]/g, ""));
   };
 
-
-  // Fetch data karyawan untuk dropdown "Assigned To"
+  // Fetch data karyawan DAN set default values form
   useEffect(() => {
-    if (open) {
-      // Reset form setiap kali dialog dibuka
+    if (open && asset) {
+      // 1. Set default values form
       form.reset({
-        purchase_date: new Date(),
-        name: "",
-        category: undefined,
-        purchase_price: 0,
-        quantity: 1,
-        condition: "Baru",
-        assigned_to: null,
-        notes: "",
+        name: asset.name,
+        category: asset.category as any, // "Elektronik" | "Furniture" | etc.
+        purchase_date: parseISO(asset.purchase_date), 
+        purchase_price: asset.purchase_price,
+        condition: asset.condition, // Skema sudah memperbolehkan null
+        assigned_to: asset.assigned_to,
+        notes: asset.notes,
       });
 
+      // 2. Fetch karyawan
       const fetchEmployees = async () => {
         try {
-          // Ambil data dari tabel 'employees' dan join 'profiles'
           const { data, error } = await supabase
             .from("employees")
-            .select(`
-              id, 
-              profiles ( full_name )
-            `);
-            
+            .select(`id, profiles ( full_name )`);
           if (error) throw error;
 
           const mappedData = data
             .map((emp: any) => ({
               id: emp.id,
-              full_name: emp.profiles?.full_name || 'Tanpa Nama', // Handle jika profil null
+              full_name: emp.profiles?.full_name || 'Tanpa Nama',
             }))
-            .sort((a, b) => a.full_name.localeCompare(b.full_name)); // Urutkan nama
+            .sort((a, b) => a.full_name.localeCompare(b.full_name));
             
           setEmployees(mappedData || []);
-
         } catch (error: any) {
-          // <-- PERBAIKAN: Gunakan toast dari useToast
           toast({
             variant: "destructive",
             title: "Gagal Memuat Karyawan",
@@ -157,44 +146,40 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
       
       fetchEmployees();
     }
-  }, [open, form, toast]); // Tambahkan toast dan form ke dependency array
+  }, [open, asset, form, toast]);
 
   const onSubmit = async (values: AssetFormValues) => {
+    if (!asset) return; // Guard clause
+
     setLoading(true);
     try {
-      // Skema DB tidak punya 'quantity', tapi punya 'purchase_price'
-      // Sesuai blueprint, kita kalikan Qty * Harga Satuan
-      const totalPrice = values.purchase_price * values.quantity;
-
       const { error } = await supabase
         .from("assets")
-        .insert({
+        .update({
           purchase_date: format(values.purchase_date, "yyyy-MM-dd"),
           name: values.name,
           category: values.category,
-          purchase_price: totalPrice, // Total Harga (Harga Satuan * Qty)
-          current_value: totalPrice, // Nilai saat ini = harga beli
+          purchase_price: values.purchase_price,
+          current_value: values.purchase_price,
           condition: values.condition,
           assigned_to: values.assigned_to,
           notes: values.notes,
-          // 'location' dan 'foto' belum ada di form
-        });
+        })
+        .eq('id', asset.id); // Kondisi WHERE
 
       if (error) throw error;
 
-      // <-- PERBAIKAN: Gunakan toast dari useToast
       toast({
-        title: "Aset Berhasil Ditambahkan",
+        title: "Aset Berhasil Diperbarui",
         description: `Aset "${values.name}" telah tersimpan.`,
       });
       onSuccess(); // Refresh list & tutup dialog
       
     } catch (error: any) {
       console.error(error);
-      // <-- PERBAIKAN: Gunakan toast dari useToast
       toast({
         variant: "destructive",
-        title: "Gagal Menyimpan Aset",
+        title: "Gagal Memperbarui Aset",
         description: `Terjadi kesalahan: ${error.message}`
       });
     } finally {
@@ -206,9 +191,9 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90svh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tambah Aset Baru</DialogTitle>
+          <DialogTitle>Edit Aset</DialogTitle>
           <DialogDescription>
-            Masukkan data inventaris aset perusahaan sesuai blueprint.
+            Perbarui data inventaris aset perusahaan.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -234,11 +219,15 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Kategori Aset</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Pilih kategori..." />
                         </SelectTrigger>
+                        {/* --- PERBAIKAN: Mengganti </Trigger> menjadi </SelectTrigger> --- 
+                        Anda dapat menghapus baris di bawah ini yang salah jika sudah terlanjur terinput:
+                        </Trigger>
+                        */}
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="Elektronik">Elektronik</SelectItem>
@@ -253,7 +242,7 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
               />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="purchase_date"
@@ -282,9 +271,9 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                 name="purchase_price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Harga Satuan (Rp)</FormLabel>
+                    <FormLabel>Harga Total (Rp)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="5.000.000"
+                      <Input type="text" placeholder="15.000.000"
                        value={formatCurrencyInput(field.value || 0)}
                        onChange={(e) => {
                          field.onChange(parseCurrencyInput(e.target.value));
@@ -295,21 +284,8 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="quantity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Jumlah (Qty)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min="1" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10) || 1)} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
-
+            
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -317,7 +293,8 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Kondisi</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      {/* value={field.value ?? ""} untuk Select component agar menerima null sebagai string kosong */}
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}> 
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Pilih kondisi..." />
@@ -338,7 +315,12 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Diberikan ke (Opsional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value === "none" ? null : value);
+                        }} 
+                        value={field.value ?? "none"}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Pilih karyawan..." />
@@ -379,7 +361,7 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
               </Button>
               <Button type="submit" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Aset
+                Simpan Perubahan
               </Button>
             </DialogFooter>
           </form>

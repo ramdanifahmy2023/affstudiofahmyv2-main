@@ -1,9 +1,23 @@
+// src/pages/Asset.tsx
+// KODE LENGKAP & DIPERBARUI (FIX IMPORT)
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, Loader2, DollarSign, Archive, PieChart as PieIcon } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Download,
+  Loader2,
+  DollarSign,
+  Archive,
+  PieChart as PieIcon,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,30 +26,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
-import { AddAssetDialog } from "@/components/Asset/AddAssetDialog"; // IMPORT BARU
+import { id as indonesianLocale } from "date-fns/locale";
+
+// --- PERBAIKAN: Tambahkan 'ResponsiveContainer' di sini ---
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
   Legend,
-  ResponsiveContainer,
+  ResponsiveContainer, // <-- INI YANG HILANG
 } from "recharts";
+// --------------------------------------------------------
 
-// Tipe data dari Supabase
+// --- Import Komponen Baru ---
+import { AddAssetDialog } from "@/components/Asset/AddAssetDialog";
+import { EditAssetDialog } from "@/components/Asset/EditAssetDialog";
+import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert";
+// ---------------------------
+
+// Tipe data dari Supabase (Query lengkap untuk Edit)
 type AssetData = {
   id: string;
   name: string;
   category: string;
   purchase_date: string;
-  purchase_price: number; // Ini adalah Total Harga (Harga Satuan * Qty)
+  purchase_price: number;
   condition: string | null;
-  // Kita tidak mengambil Qty karena tidak ada di DB
+  assigned_to: string | null; // Kita fetch ini untuk Edit
+  notes: string | null; // Kita fetch ini untuk Edit
 };
 
 // Tipe untuk data Pie Chart
@@ -49,20 +79,26 @@ const COLORS = [
   "hsl(var(--chart-2))",
   "hsl(var(--chart-3))",
   "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
 ];
 
 const Assets = () => {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Cek hak akses [cite: 51]
+  // --- State untuk Modal/Dialog ---
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
+  // ---------------------------------
+
   const canManageAssets =
     profile?.role === "superadmin" || profile?.role === "admin";
     
-  // Helper format
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -73,14 +109,14 @@ const Assets = () => {
   
   const formatDate = (dateString: string) => {
     try {
-      return format(new Date(`${dateString}T00:00:00`), "dd MMM yyyy");
+      return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "dd MMM yyyy", { locale: indonesianLocale });
     } catch (e) { return "-"; }
   }
 
-  // Fetch data
   const fetchAssets = async () => {
     setLoading(true);
     try {
+      // Query semua field yg dibutuhkan untuk Edit
       const { data, error } = await supabase
         .from("assets")
         .select(`
@@ -89,14 +125,15 @@ const Assets = () => {
           category,
           purchase_date,
           purchase_price,
-          condition
+          condition,
+          assigned_to,
+          notes 
         `)
         .order("purchase_date", { ascending: false });
 
       if (error) throw error;
       setAssets(data || []);
       
-      // Proses data untuk Pie Chart [cite: 222]
       const breakdown: { [key: string]: number } = {};
       (data || []).forEach(asset => {
         breakdown[asset.category] = (breakdown[asset.category] || 0) + 1;
@@ -104,7 +141,11 @@ const Assets = () => {
       setChartData(Object.entries(breakdown).map(([name, value]) => ({ name, value })));
 
     } catch (error: any) {
-      toast.error("Gagal memuat data aset.");
+      toast({
+        variant: "destructive",
+        title: "Gagal Memuat Data",
+        description: "Terjadi kesalahan saat memuat data aset."
+      });
       console.error(error);
     } finally {
       setLoading(false);
@@ -114,14 +155,26 @@ const Assets = () => {
   useEffect(() => {
     fetchAssets();
   }, []);
+  
+  // --- Fungsi helper untuk buka modal ---
+  const handleEditClick = (asset: AssetData) => {
+    setSelectedAsset(asset);
+    setIsEditModalOpen(true);
+  };
 
-  const totalValue = assets.reduce((acc, asset) => acc + asset.purchase_price, 0);
+  const handleDeleteClick = (asset: AssetData) => {
+    setSelectedAsset(asset);
+    setIsDeleteAlertOpen(true);
+  };
+  // -------------------------------------
+
+  const totalValue = assets.reduce((acc, asset) => acc + (asset.purchase_price || 0), 0);
   const totalItems = assets.length;
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Manajemen Aset</h1>
             <p className="text-muted-foreground">
@@ -129,14 +182,14 @@ const Assets = () => {
             </p>
           </div>
           {canManageAssets && (
-            <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
+            <Button className="gap-2 w-full sm:w-auto" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="h-4 w-4" />
               Tambah Aset
             </Button>
           )}
         </div>
 
-        {/* Summary Cards [cite: 220, 221] */}
+        {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="pb-3">
@@ -179,20 +232,20 @@ const Assets = () => {
           </Card>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Table */}
-          <Card className="md:col-span-2">
+          <Card className="lg:col-span-2">
             <CardHeader>
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1">
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="relative flex-1 w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Cari nama aset..."
-                    className="pl-10"
+                    className="pl-10 w-full"
                     // TODO: Implement search state
                   />
                 </div>
-                <Button variant="outline" className="gap-2">
+                <Button variant="outline" className="gap-2 w-full sm:w-auto" disabled>
                   <Download className="h-4 w-4" />
                   Export (Soon)
                 </Button>
@@ -204,57 +257,80 @@ const Assets = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tanggal Beli</TableHead>
-                      <TableHead>Nama Aset</TableHead>
-                      <TableHead>Kategori</TableHead>
-                      <TableHead>Kondisi</TableHead>
-                      <TableHead className="text-right">Total Harga</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {assets.length === 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center h-24">
-                          Belum ada data aset.
-                        </TableCell>
+                        <TableHead>Tanggal Beli</TableHead>
+                        <TableHead>Nama Aset</TableHead>
+                        <TableHead>Kategori</TableHead>
+                        <TableHead>Kondisi</TableHead>
+                        <TableHead className="text-right">Total Harga</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
-                    )}
-                    {assets.map((asset) => (
-                      <TableRow key={asset.id}>
-                        <TableCell>{formatDate(asset.purchase_date)}</TableCell>
-                        <TableCell className="font-medium">{asset.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{asset.category}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={asset.condition === "Baru" ? "default" : "secondary"}>
-                            {asset.condition}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(asset.purchase_price)}
-                        </TableCell>
-                        <TableCell>
-                          {canManageAssets && (
-                            <Button variant="ghost" size="sm">
-                              Edit
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {assets.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center h-24">
+                            Belum ada data aset.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {assets.map((asset) => (
+                        <TableRow key={asset.id}>
+                          <TableCell>{formatDate(asset.purchase_date)}</TableCell>
+                          <TableCell className="font-medium">{asset.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{asset.category}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={asset.condition === "Baru" ? "default" : (asset.condition === "Bekas" ? "secondary" : "outline")}>
+                              {asset.condition || "-"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(asset.purchase_price)}
+                          </TableCell>
+                          {/* --- KOLOM ACTIONS BARU --- */}
+                          <TableCell className="text-center">
+                            {canManageAssets ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleEditClick(asset)}>
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteClick(asset)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </TableCell>
+                          {/* ------------------------- */}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
           
-          {/* Pie Chart [cite: 222] */}
-          <Card className="md:col-span-1">
+          {/* Pie Chart */}
+          <Card className="lg:col-span-1">
              <CardHeader>
                <CardTitle>Breakdown Aset by Kategori</CardTitle>
              </CardHeader>
@@ -271,7 +347,7 @@ const Assets = () => {
                      fill="#8884d8"
                      dataKey="value"
                    >
-                     {chartData.map((entry, index) => (
+                     {chartData.map((_entry, index) => (
                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                      ))}
                    </Pie>
@@ -291,17 +367,42 @@ const Assets = () => {
         </div>
       </div>
       
-      {/* Render Dialog Tambah Aset */}
+      {/* --- Render Semua Dialog --- */}
        {canManageAssets && (
-         <AddAssetDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchAssets(); // Refresh data
-           }}
-         />
+         <>
+           <AddAssetDialog
+             open={isAddModalOpen}
+             onOpenChange={setIsAddModalOpen}
+             onSuccess={() => {
+               setIsAddModalOpen(false);
+               fetchAssets();
+             }}
+           />
+           
+           <EditAssetDialog
+             open={isEditModalOpen}
+             onOpenChange={setIsEditModalOpen}
+             asset={selectedAsset}
+             onSuccess={() => {
+               setIsEditModalOpen(false);
+               setSelectedAsset(null);
+               fetchAssets();
+             }}
+           />
+           
+           <DeleteAssetAlert
+             open={isDeleteAlertOpen}
+             onOpenChange={setIsDeleteAlertOpen}
+             asset={selectedAsset}
+             onSuccess={() => {
+               setIsDeleteAlertOpen(false);
+               setSelectedAsset(null);
+               fetchAssets();
+             }}
+           />
+         </>
        )}
+       {/* --------------------------- */}
     </MainLayout>
   );
 };
