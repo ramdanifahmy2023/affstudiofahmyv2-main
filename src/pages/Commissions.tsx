@@ -1,9 +1,9 @@
+// src/pages/Commissions.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, Loader2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,77 +12,128 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import {
+  Plus,
+  Loader2,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  DollarSign,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
-// IMPORT BARU
-import { AddCommissionDialog } from "@/components/Commission/AddCommissionDialog";
-import { cn } from "@/lib/utils";
+import { id as indonesiaLocale } from "date-fns/locale";
 
-// Tipe data dari Supabase
-type CommissionData = {
+// Import dialog-dialog
+import { AddCommissionDialog } from "@/components/Commission/AddCommissionDialog";
+import { EditCommissionDialog } from "@/components/Commission/EditCommissionDialog";
+import { DeleteCommissionAlert } from "@/components/Commission/DeleteCommissionAlert";
+
+// Tipe data untuk komisi
+export type CommissionData = {
   id: string;
   period: string;
-  gross_commission: number;
-  net_commission: number;
-  paid_commission: number;
+  period_start: string;
+  period_end: string;
+  gross_commission: number; // Dari DB tetap number
+  net_commission: number;   // Dari DB tetap number
+  paid_commission: number;  // Dari DB tetap number
   payment_date: string | null;
-  accounts: { // Data dari join
+  accounts: {
+    id: string;
     username: string;
-    platform: string;
-  } | null;
+  };
+};
+
+// Tipe untuk dialog
+type DialogState = {
+  add: boolean;
+  edit: CommissionData | null;
+  delete: CommissionData | null;
+};
+
+// Tipe untuk summary
+type CommissionSummary = {
+  gross: number;
+  net: number;
+  paid: number;
 };
 
 const Commissions = () => {
   const { profile } = useAuth();
   const [commissions, setCommissions] = useState<CommissionData[]>([]);
-  const [filteredCommissions, setFilteredCommissions] = useState<CommissionData[]>([]);
+  const [summary, setSummary] = useState<CommissionSummary>({ gross: 0, net: 0, paid: 0 });
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [dialogs, setDialogs] = useState<DialogState>({
+    add: false,
+    edit: null,
+    delete: null,
+  });
 
-  // Cek hak akses
-  const canManageCommissions =
-    profile?.role === "superadmin" || profile?.role === "leader";
+  const canManage =
+    profile?.role === "superadmin" ||
+    profile?.role === "leader" ||
+    profile?.role === "admin";
     
+  const canDelete = profile?.role === "superadmin"; // Hanya superadmin bisa hapus
+
   // Helper format
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null || isNaN(amount)) return "Rp 0";
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0,
     }).format(amount);
   };
-  
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    try {
-      return format(new Date(`${dateString}T00:00:00`), "dd MMM yyyy");
-    } catch (e) {
-      return "-";
-    }
-  }
+    const date = new Date(dateString + "T00:00:00"); // Hindari T-Z
+    return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
+  };
 
-  // Fetch data
+  // Fungsi ambil data
   const fetchCommissions = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("commissions")
-        .select(`
+        .select(
+          `
           id,
           period,
+          period_start,
+          period_end,
           gross_commission,
           net_commission,
           paid_commission,
           payment_date,
-          accounts ( username, platform )
-        `);
+          accounts ( id, username )
+        `
+        )
+        .order("period_start", { ascending: false });
+
       if (error) throw error;
       setCommissions(data as any);
-      setFilteredCommissions(data as any);
+      
+      // Hitung summary
+      const gross = data.reduce((acc, c) => acc + c.gross_commission, 0);
+      const net = data.reduce((acc, c) => acc + c.net_commission, 0);
+      const paid = data.reduce((acc, c) => acc + c.paid_commission, 0);
+      setSummary({ gross, net, paid });
+
     } catch (error: any) {
       toast.error("Gagal memuat data komisi.");
       console.error(error);
@@ -95,96 +146,65 @@ const Commissions = () => {
     fetchCommissions();
   }, []);
 
-  // Efek untuk filtering
-  useEffect(() => {
-    const results = commissions.filter((comm) =>
-      comm.accounts?.username.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredCommissions(results);
-  }, [searchTerm, commissions]);
-
-  // Kalkulasi untuk summary cards
-  const totalKotor = commissions.reduce((acc, c) => acc + c.gross_commission, 0);
-  const totalBersih = commissions.reduce((acc, c) => acc + c.net_commission, 0);
-  const totalCair = commissions.reduce((acc, c) => acc + c.paid_commission, 0);
-
   return (
     <MainLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Data Komisi</h1>
-            <p className="text-muted-foreground">Lacak data komisi affiliate</p>
+            <h1 className="text-3xl font-bold">Data Komisi Affiliate</h1>
+            <p className="text-muted-foreground">
+              Kelola data komisi kotor, bersih, dan cair.
+            </p>
           </div>
-          {canManageCommissions && (
-            <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
+          {canManage && (
+            <Button
+              className="gap-2"
+              onClick={() => setDialogs({ ...dialogs, add: true })}
+            >
               <Plus className="h-4 w-4" />
-              Tambah Komisi
+              Input Komisi
             </Button>
           )}
         </div>
 
-        {/* Summary Cards */}
+        {/* --- KARTU SUMMARY BARU --- */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Komisi Kotor
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Komisi Kotor</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalKotor)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Dari semua akun
-              </p>
+              <div className="text-2xl font-bold">{formatCurrency(summary.gross)}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Komisi Bersih
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Komisi Bersih</CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalBersih)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Setelah potongan
-              </p>
+              <div className="text-2xl font-bold">{formatCurrency(summary.net)}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Komisi Cair
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Komisi Cair</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-success">{formatCurrency(totalCair)}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Berhasil dibayarkan
-              </p>
+              <div className="text-2xl font-bold text-success">
+                {formatCurrency(summary.paid)}
+              </div>
             </CardContent>
           </Card>
         </div>
+        {/* --- AKHIR KARTU SUMMARY --- */}
 
-        {/* Table */}
+        {/* Tabel Data */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari berdasarkan username..."
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Button variant="outline" className="gap-2">
-                <Download className="h-4 w-4" />
-                Export (Soon)
-              </Button>
-            </div>
+            <CardTitle>Riwayat Komisi</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -195,61 +215,83 @@ const Commissions = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Username</TableHead>
-                    <TableHead>Platform</TableHead>
+                    <TableHead>Akun</TableHead>
                     <TableHead>Periode</TableHead>
-                    <TableHead className="text-right">Komisi Kotor</TableHead>
-                    <TableHead className="text-right">Komisi Bersih</TableHead>
-                    <TableHead className="text-right">Komisi Cair</TableHead>
-                    <TableHead>Tgl. Cair</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Tgl. Komisi Cair</TableHead>
+                    <TableHead className="text-right">Kotor</TableHead>
+                    <TableHead className="text-right">Bersih</TableHead>
+                    <TableHead className="text-right">Cair</TableHead>
+                    {canManage && <TableHead>Aksi</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCommissions.length === 0 && (
-                     <TableRow>
-                       <TableCell colSpan={8} className="text-center h-24">
-                         {searchTerm ? "Data komisi tidak ditemukan." : "Belum ada data komisi."}
-                       </TableCell>
-                     </TableRow>
+                  {commissions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center h-24">
+                        Belum ada data komisi.
+                      </TableCell>
+                    </TableRow>
                   )}
-                  {filteredCommissions.map((commission) => (
-                    <TableRow key={commission.id}>
+                  {commissions.map((c) => (
+                    <TableRow key={c.id}>
                       <TableCell className="font-medium">
-                        {commission.accounts?.username || "Akun Dihapus"}
+                        {c.accounts?.username || "N/A"}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            commission.accounts?.platform === "shopee" ? "default" : "secondary"
-                          }
-                           className={cn(commission.accounts?.platform === "shopee" ? "bg-[#FF6600] hover:bg-[#FF6600]/90" : "bg-black hover:bg-black/90 text-white")}
-                        >
-                          {commission.accounts?.platform || "N/A"}
-                        </Badge>
+                        <div className="flex flex-col">
+                          <Badge
+                            variant="secondary"
+                            className="w-fit"
+                          >
+                            {c.period}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground mt-1">
+                            {formatDate(c.period_start)} - {formatDate(c.period_end)}
+                          </span>
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge>{commission.period}</Badge>
+                      <TableCell>{formatDate(c.payment_date)}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(c.gross_commission)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(commission.gross_commission)}
+                        {formatCurrency(c.net_commission)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(commission.net_commission)}
+                      <TableCell className="text-right font-bold text-success">
+                        {formatCurrency(c.paid_commission)}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-success">
-                        {formatCurrency(commission.paid_commission)}
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(commission.payment_date)}
-                      </TableCell>
-                      <TableCell>
-                        {canManageCommissions && (
-                          <Button variant="ghost" size="sm">
-                            Edit
-                          </Button>
-                        )}
-                      </TableCell>
+                      {/* --- DROPDOWN AKSI BARU --- */}
+                      {canManage && (
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setDialogs({ ...dialogs, edit: c })
+                                }
+                              >
+                                <Edit className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              {canDelete && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() =>
+                                    setDialogs({ ...dialogs, delete: c })
+                                  }
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      )}
+                      {/* --- AKHIR DROPDOWN AKSI --- */}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -259,17 +301,41 @@ const Commissions = () => {
         </Card>
       </div>
 
-      {/* Render Dialog Tambah Komisi */}
-      {canManageCommissions && (
-         <AddCommissionDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchCommissions(); // Refresh data
-           }}
-         />
-       )}
+      {/* --- RENDER SEMUA DIALOG --- */}
+      {canManage && (
+        <>
+          <AddCommissionDialog
+            open={dialogs.add}
+            onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
+            onSuccess={() => {
+              setDialogs({ ...dialogs, add: false });
+              fetchCommissions(); // Refresh data
+            }}
+          />
+          <EditCommissionDialog
+            open={!!dialogs.edit}
+            onOpenChange={(open) =>
+              setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })
+            }
+            onSuccess={() => {
+              setDialogs({ ...dialogs, edit: null });
+              fetchCommissions(); // Refresh data
+            }}
+            commission={dialogs.edit}
+          />
+          <DeleteCommissionAlert
+            open={!!dialogs.delete}
+            onOpenChange={(open) =>
+              setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })
+            }
+            onSuccess={() => {
+              setDialogs({ ...dialogs, delete: null });
+              fetchCommissions(); // Refresh data
+            }}
+            commission={dialogs.delete}
+          />
+        </>
+      )}
     </MainLayout>
   );
 };

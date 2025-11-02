@@ -1,4 +1,4 @@
-// src/components/Commission/AddCommissionDialog.tsx
+// src/components/Commission/EditCommissionDialog.tsx
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, getYear, getMonth, startOfMonth, endOfMonth, getISOWeek, set } from "date-fns";
+import { format, getYear, getMonth, startOfMonth, endOfMonth } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
@@ -38,13 +38,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CommissionData } from "@/pages/Commissions";
 
-// Tipe data Akun
-type Account = { id: string; username: string };
+// Skema Zod (sama persis dengan file Add Anda)
 const periods = ["M1", "M2", "M3", "M4", "M5"] as const;
 
 // --- PERBAIKAN SKEMA ZOD ---
-// Kita simpan sebagai string, dan validasi sebagai angka
 const commissionFormSchema = z.object({
   account_id: z.string().uuid({ message: "Akun wajib dipilih." }),
   year: z.string().length(4),
@@ -65,31 +64,23 @@ const commissionFormSchema = z.object({
 
 type CommissionFormValues = z.infer<typeof commissionFormSchema>;
 
-interface AddCommissionDialogProps {
+type Account = { id: string; username: string };
+
+interface EditCommissionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  commission: CommissionData | null;
 }
 
-export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommissionDialogProps) => {
+export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission }: EditCommissionDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [periodDates, setPeriodDates] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
 
   const form = useForm<CommissionFormValues>({
     resolver: zodResolver(commissionFormSchema),
-    // --- PERBAIKAN DEFAULT VALUES ---
-    defaultValues: {
-      account_id: undefined,
-      year: getYear(new Date()).toString(),
-      month: getMonth(new Date()).toString(),
-      period: undefined,
-      gross_commission: "0", // Ubah ke string "0"
-      net_commission: "0",
-      paid_commission: "0",
-      payment_date: null,
-    },
-    // --- AKHIR PERBAIKAN ---
+    // Default values akan diisi oleh useEffect
   });
 
   // Ambil data Akun
@@ -105,6 +96,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
 
   // Logika kalkulasi tanggal (dari file Add Anda)
   const calculatePeriodDates = (yearStr: string, monthStr: string, period: string) => {
+     // ... (fungsi ini sama persis dengan yang ada di AddCommissionDialog.tsx)
     const year = parseInt(yearStr);
     const month = parseInt(monthStr); // 0-11
     if (isNaN(year) || isNaN(month)) return { start: null, end: null };
@@ -164,18 +156,37 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
       setPeriodDates(dates);
     }
   }, [watchFields, form]);
-  
-  const onSubmit = async (values: CommissionFormValues) => {
-    if (!periodDates.start || !periodDates.end) {
-      toast.error("Gagal menghitung rentang tanggal. Periksa input periode.");
-      return;
+
+  // Isi form saat dialog dibuka
+  useEffect(() => {
+    if (commission && open) {
+      const startDate = new Date(commission.period_start + "T00:00:00");
+      
+      form.reset({
+        account_id: commission.accounts.id,
+        year: getYear(startDate).toString(),
+        month: getMonth(startDate).toString(),
+        period: commission.period as any,
+        // --- PERBAIKAN: Ubah number ke string ---
+        gross_commission: commission.gross_commission.toString(),
+        net_commission: commission.net_commission.toString(),
+        paid_commission: commission.paid_commission.toString(),
+        // --- AKHIR PERBAIKAN ---
+        payment_date: commission.payment_date
+          ? new Date(commission.payment_date + "T00:00:00")
+          : null,
+      });
     }
+  }, [commission, open, form]);
+
+  const onSubmit = async (values: CommissionFormValues) => {
+    if (!periodDates.start || !periodDates.end || !commission) return;
     
     setLoading(true);
     try {
       const { error } = await supabase
         .from("commissions")
-        .insert({
+        .update({
           account_id: values.account_id,
           period: values.period,
           period_start: format(periodDates.start, "yyyy-MM-dd"),
@@ -186,11 +197,12 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
           paid_commission: parseFloat(values.paid_commission),
           // --- AKHIR PERBAIKAN ---
           payment_date: values.payment_date ? format(values.payment_date, "yyyy-MM-dd") : null,
-        });
+        })
+        .eq("id", commission.id);
 
       if (error) throw error;
 
-      toast.success(`Komisi untuk ${values.period} berhasil ditambahkan.`);
+      toast.success(`Data komisi berhasil diperbarui.`);
       form.reset();
       onSuccess();
     } catch (error: any) {
@@ -206,13 +218,11 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
      if (typeof value === 'number') value = value.toString();
      if (!value) return "";
      const num = value.replace(/[^0-9]/g, "");
-     // Tampilkan "0" jika inputnya "0", jangan string kosong
      if (num === "0") return "0";
      return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
   };
   
   const parseCurrencyInput = (value: string) => {
-     // Hapus "Rp" dan "."
      return value.replace(/[^0-9]/g, "");
   };
 
@@ -220,20 +230,21 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Input Data Komisi</DialogTitle>
+          <DialogTitle>Edit Data Komisi</DialogTitle>
           <DialogDescription>
-            Masukkan data komisi baru untuk salah satu akun.
+            Perbarui detail komisi untuk akun: {commission?.accounts.username}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Field Akun */}
             <FormField
               control={form.control}
               name="account_id"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Akun</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Pilih Akun" />
@@ -252,6 +263,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
               )}
             />
             
+            {/* Field Tanggal (Tahun, Bulan, Periode) */}
             <div className="grid grid-cols-3 gap-4">
               <FormField
                 control={form.control}
@@ -259,7 +271,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tahun</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="2025">2025</SelectItem>
@@ -276,7 +288,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Bulan</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                       <SelectContent>
                         {Array.from({ length: 12 }, (_, i) => (
@@ -296,8 +308,8 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Periode</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                       <FormControl><SelectTrigger><SelectValue placeholder="Pilih M..." /></SelectTrigger></FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                       <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                       <SelectContent>
                         {periods.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                       </SelectContent>
@@ -313,6 +325,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
               </div>
             )}
             
+            {/* Field Nominal (Kotor, Bersih, Cair) */}
             <div className="grid grid-cols-3 gap-4">
               <FormField
                 control={form.control}
@@ -321,13 +334,11 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
                   <FormItem>
                     <FormLabel>Komisi Kotor</FormLabel>
                     <FormControl>
-                      {/* --- INPUT DIPERBARUI --- */}
                       <Input 
                         placeholder="0"
                         value={formatCurrencyInput(field.value)}
                         onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
-                      {/* --- AKHIR PERBARUAN --- */}
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -375,6 +386,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Tanggal Cair (Opsional)</FormLabel>
+                  {/* ... (komponen Popover Calendar tetap sama) ... */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
@@ -405,7 +417,7 @@ export const AddCommissionDialog = ({ open, onOpenChange, onSuccess }: AddCommis
               </Button>
               <Button type="submit" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Komisi
+                Simpan Perubahan
               </Button>
             </DialogFooter>
           </form>
