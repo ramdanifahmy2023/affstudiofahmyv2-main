@@ -1,6 +1,17 @@
+// src/pages/Dashboard.tsx
+import { useState } from "react"; // <-- TAMBAHKAN
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { MetricCard } from "@/components/Dashboard/MetricCard";
-import { Input } from "@/components/ui/input"; // <-- TAMBAHKAN BARIS INI
+import { Input } from "@/components/ui/input";
+// Import komponen filter baru
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DollarSign,
@@ -9,6 +20,7 @@ import {
   Users,
   Package,
   Wallet,
+  Search,
 } from "lucide-react";
 import {
   LineChart,
@@ -26,8 +38,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// ... (Data dummy salesData, commissionData, groupData tetap sama) ...
-
+// Data dummy (tetap sama)
 const salesData = [
   { name: "Mon", sales: 4000, commission: 2400 },
   { name: "Tue", sales: 3000, commission: 1398 },
@@ -52,22 +63,108 @@ const groupData = [
   { name: "Group E", omset: 22000000 },
 ];
 
+// --- TAMBAHAN DATA UNTUK CHART BARU ---
+const accountData = [
+  { name: "Shopee", value: 15, color: "hsl(var(--chart-1))" },
+  { name: "TikTok", value: 9, color: "hsl(var(--chart-2))" },
+];
+
+// Data dummy untuk filter
+const dummyGroups = [
+  { id: "g1", name: "Group A" },
+  { id: "g2", name: "Group B" },
+  { id: "g3", name: "Group C" },
+];
+
+const dummyEmployees = [
+  { id: "e1", name: "Karyawan 1 (A)" },
+  { id: "e2", name: "Karyawan 2 (A)" },
+  { id: "e3", name: "Karyawan 3 (B)" },
+];
 
 const Dashboard = () => {
+  // --- TAMBAHAN STATE UNTUK FILTER ---
+  const [filterDateStart, setFilterDateStart] = useState("");
+  const [filterDateEnd, setFilterDateEnd] = useState("");
+  const [filterGroup, setFilterGroup] = useState("");
+  const [filterEmployee, setFilterEmployee] = useState("");
+
+  const handleFilterSubmit = () => {
+    // Nanti, logika fetch data berdasarkan filter ada di sini
+    console.log({
+      start: filterDateStart,
+      end: filterDateEnd,
+      group: filterGroup,
+      employee: filterEmployee,
+    });
+  };
+  
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Filter Global (Placeholder) */}
+        {/* --- FILTER GLOBAL (DIPERBARUI) --- */}
         <Card>
-          <CardContent className="pt-6 flex flex-wrap gap-4">
-            {/* Nanti ini akan menjadi komponen filter dinamis */}
-            <Input type="date" className="w-auto" />
-            <Input placeholder="Filter Group" className="w-auto" />
-            <Input placeholder="Filter Karyawan" className="w-auto" />
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap gap-4 items-end">
+              {/* Filter Tanggal Awal */}
+              <div className="flex-1 min-w-[150px] space-y-1">
+                <label htmlFor="date-start" className="text-xs text-muted-foreground">Mulai Tgl</label>
+                <Input 
+                  id="date-start" 
+                  type="date" 
+                  className="w-full" 
+                  value={filterDateStart}
+                  onChange={(e) => setFilterDateStart(e.target.value)}
+                />
+              </div>
+              {/* Filter Tanggal Akhir */}
+              <div className="flex-1 min-w-[150px] space-y-1">
+                <label htmlFor="date-end" className="text-xs text-muted-foreground">Sampai Tgl</label>
+                <Input 
+                  id="date-end" 
+                  type="date" 
+                  className="w-full"
+                  value={filterDateEnd}
+                  onChange={(e) => setFilterDateEnd(e.target.value)}
+                />
+              </div>
+              {/* Filter Group */}
+              <div className="flex-1 min-w-[150px] space-y-1">
+                <label htmlFor="filter-group" className="text-xs text-muted-foreground">Group</label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group" className="w-full">
+                    <SelectValue placeholder="Semua Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dummyGroups.map(g => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Filter Karyawan */}
+              <div className="flex-1 min-w-[150px] space-y-1">
+                <label htmlFor="filter-employee" className="text-xs text-muted-foreground">Karyawan</label>
+                <Select value={filterEmployee} onValueChange={setFilterEmployee}>
+                  <SelectTrigger id="filter-employee" className="w-full">
+                    <SelectValue placeholder="Semua Karyawan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dummyEmployees.map(e => (
+                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Tombol Filter */}
+              <Button onClick={handleFilterSubmit} className="gap-2">
+                <Search className="h-4 w-4" /> Terapkan
+              </Button>
+            </div>
           </CardContent>
         </Card>
         
-        {/* 6 Metric Cards */}
+        {/* 6 Metric Cards (Tetap Sama) */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             title="Total Komisi Kotor"
@@ -109,9 +206,10 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Charts Row 1 */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+        {/* --- Charts Row 1 (DIPERBARUI, 3 KOLOM) --- */}
+        <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
+          {/* Chart Tren Omset (Diperkecil) */}
+          <Card className="lg:col-span-2"> {/* Mengambil 2/3 tempat */}
             <CardHeader>
               <CardTitle>Tren Omset & Komisi</CardTitle>
             </CardHeader>
@@ -148,7 +246,8 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          {/* Chart Breakdown Komisi (Diperkecil) */}
+          <Card> {/* Mengambil 1/3 tempat */}
             <CardHeader>
               <CardTitle>Breakdown Komisi</CardTitle>
             </CardHeader>
@@ -161,9 +260,9 @@ const Dashboard = () => {
                     cy="50%"
                     labelLine={false}
                     label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
+                      `${(percent * 100).toFixed(0)}%`
                     }
-                    outerRadius={100}
+                    outerRadius={80} // Diperkecil
                     fill="#8884d8"
                     dataKey="value"
                   >
@@ -185,44 +284,86 @@ const Dashboard = () => {
                       }).format(value)
                     }
                   />
+                  <Legend />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts Row 2 (Performa Group) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Performa Group (Top 5)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={groupData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
-                <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                  formatter={(value: number) =>
-                    new Intl.NumberFormat("id-ID", {
-                      style: "currency",
-                      currency: "IDR",
-                      minimumFractionDigits: 0,
-                    }).format(value)
-                  }
-                />
-                <Bar dataKey="omset" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* --- Charts Row 2 (DIPERBARUI) --- */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Chart Performa Group (Tetap Sama) */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Performa Group (Top 5)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={groupData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                    }}
+                    formatter={(value: number) =>
+                      new Intl.NumberFormat("id-ID", {
+                        style: "currency",
+                        currency: "IDR",
+                        minimumFractionDigits: 0,
+                      }).format(value)
+                    }
+                  />
+                  <Bar dataKey="omset" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Omset" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          
+          {/* --- CHART PERFORMA AKUN (BARU) --- */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Performa Akun</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={accountData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent, value }) =>
+                      `${name} (${value})`
+                    }
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {accountData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "var(--radius)",
+                    }}
+                    formatter={(value: number) => `${value} Akun`}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Ranking Table */}
+        {/* Ranking Table (Tetap Sama) */}
         <Card>
           <CardHeader>
             <CardTitle>Ranking Karyawan</CardTitle>
