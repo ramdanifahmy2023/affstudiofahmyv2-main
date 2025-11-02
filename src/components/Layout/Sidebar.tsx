@@ -15,6 +15,8 @@ import {
   BookOpen,
   Settings,
   LogOut,
+  Archive, // <-- IMPORT BARU UNTUK ASET
+  Scale, // <-- IMPORT BARU UNTUK HUTANG
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
