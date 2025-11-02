@@ -16,7 +16,11 @@ import Employees from "./pages/Employees";
 import Devices from "./pages/Devices";
 import Accounts from "./pages/Accounts";
 import Groups from "./pages/Groups";
-import Assets from "./pages/Assets"; // <-- IMPORT BARU
+import Assets from "./pages/Asset"; // Import Assets
+import DebtReceivable from "./pages/DebtReceivable"; // <-- BARIS BARU
+import ProfitLoss from "./pages/ProfitLoss"; // <-- BARIS BARU
+import KPI from "./pages/KPI"; // <-- BARIS BARU
+import Knowledge from "./pages/Knowledge"; // <-- BARIS BARU
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -121,8 +125,47 @@ const App = () => (
               }
             />
             {/* -------------------------------------- */}
-
+            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
+            <Route
+              path="/debt-receivable"
+              element={
+                <ProtectedRoute>
+                  <DebtReceivable />
+                </ProtectedRoute>
+              }
+            />
+            {/* -------------------------------------- */}
+            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
+            <Route
+              path="/kpi"
+              element={
+                <ProtectedRoute>
+                  <KPI />
+                </ProtectedRoute>
+              }
+            />
+            {/* -------------------------------------- */}
+            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
+            <Route
+              path="/knowledge"
+              element={
+                <ProtectedRoute>
+                  <Knowledge />
+                </ProtectedRoute>
+              }
+            />
+            {/* -------------------------------------- */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
+            <Route
+              path="/profit-loss"
+              element={
+                <ProtectedRoute>
+                  <ProfitLoss />
+                </ProtectedRoute>
+              }
+            />
+            {/* -------------------------------------- */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

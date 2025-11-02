@@ -34,10 +34,17 @@ const navItems: NavItem[] = [
   { title: "Attendance", href: "/attendance", icon: UserCircle },
   { title: "Commissions", href: "/commissions", icon: DollarSign },
   { title: "Cashflow", href: "/cashflow", icon: Wallet },
+  { title: "Assets", href: "/assets", icon: FileSpreadsheet },
+  { title: "Debt & Receivable", href: "/debt-receivable", icon: BookOpen },
+  // --- PERBAIKAN DI BAWAH INI ---
+  { title: "Laba Rugi", href: "/profit-loss", icon: Target },
+  // --- BATAS PERBAIKAN ---
+  { title: "KPI Targets", href: "/kpi", icon: Target },
   { title: "Employees", href: "/employees", icon: Users },
   { title: "Devices", href: "/devices", icon: Smartphone },
   { title: "Accounts", href: "/accounts", icon: UserCircle },
   { title: "Groups", href: "/groups", icon: Package },
+  { title: "SOP & Knowledge", href: "/knowledge", icon: BookOpen },
 ];
 
 export const Sidebar = () => {

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription, // <-- PERBAIKAN: DialogDescription ditambahkan
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -134,7 +135,7 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
     setLoading(true);
     try {
       // Skema DB tidak punya 'quantity', tapi punya 'purchase_price'
-      // Blueprint [cite: 219] punya 'Qty' dan 'Harga Satuan'
+      [cite_start]// Blueprint [cite: 122, 123] punya 'Qty' dan 'Harga Satuan'
       // Kita asumsikan 'purchase_price' di DB adalah TOTAL HARGA
       const totalPrice = values.purchase_price * values.quantity;
 

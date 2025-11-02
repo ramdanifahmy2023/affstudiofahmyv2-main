@@ -19,36 +19,60 @@ const pageTitles: Record<string, { title: string; description: string }> = {
     description: "Track team and individual performance metrics",
   },
   "/daily-report": {
-    title: "Daily Report",
+    title: "Jurnal Harian",
     description: "Submit your daily work report",
   },
   "/attendance": {
-    title: "Attendance",
-    description: "Track your work attendance",
+    title: "Absensi",
+    description: "Catat kehadiran kerja Anda di sini.",
   },
   "/commissions": {
-    title: "Commissions",
-    description: "Track affiliate commission data",
+    title: "Data Komisi",
+    description: "Lacak data komisi affiliate",
   },
   "/cashflow": {
     title: "Cashflow",
     description: "Monitor income and expenses",
   },
+  "/assets": {
+    title: "Manajemen Aset",
+    description: "Kelola inventaris aset perusahaan.",
+  },
+  "/debt-receivable": {
+    title: "Saldo Hutang Piutang",
+    description: "Kelola dan lacak hutang dan piutang perusahaan.",
+  },
+  // --- PERBAIKAN DI BAWAH INI ---
+  "/profit-loss": { 
+    title: "Laba Rugi Bisnis",
+    description: "Perhitungan laba kotor dan laba bersih perusahaan."
+  },
+  // --- BATAS PERBAIKAN ---
   "/employees": {
-    title: "Employees",
-    description: "Manage your team members",
+    title: "Direktori Karyawan",
+    description: "Kelola data anggota tim Anda.",
   },
   "/devices": {
-    title: "Devices",
+    title: "Inventaris Device",
     description: "Manage team devices and inventory",
   },
   "/accounts": {
-    title: "Accounts",
-    description: "Manage affiliate accounts",
+    title: "Daftar Akun Affiliate",
+    description: "Kelola akun Shopee dan TikTok affiliate.",
   },
   "/groups": {
-    title: "Groups",
-    description: "Manage team groups and assignments",
+    title: "Manage Groups",
+    description: "Kelola grup tim dan alokasi aset.",
+  },
+  // BARIS BARU DITAMBAHKAN
+  "/kpi": {
+    title: "Goal & Target KPI",
+    description: "Lacak pencapaian target tim dan individu.",
+  },
+  // BARIS BARU DITAMBAHKAN
+  "/knowledge": {
+    title: "SOP & Knowledge Center",
+    description: "Pusat tutorial, SOP, dan kebijakan perusahaan.",
   },
 };
 
@@ -59,6 +83,7 @@ export const Header = () => {
     description: "Shopee Affiliate Management System",
   };
 
+  // Pastikan lebar header menyesuaikan dengan sidebar (16rem)
   return (
     <header className="fixed right-0 top-0 z-30 h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-[calc(100%-16rem)]">
       <div className="flex h-full items-center justify-between px-6">

@@ -1,0 +1,326 @@
+import { useState, useEffect } from "react";
+import { MainLayout } from "@/components/Layout/MainLayout";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, Download, TrendingUp, TrendingDown, Loader2, DollarSign, Percent } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { cn } from "@/lib/utils"; // <-- PERBAIKAN: Impor 'cn' ditambahkan di sini
+
+// Definisi Tipe
+type CashflowData = { type: "income" | "expense"; amount: number; category: string | null; description: string };
+type CommissionData = { paid_commission: number };
+type SummaryItem = { name: string; value: number; color: string };
+
+const ProfitLoss = () => {
+  const { profile } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [totalIncome, setTotalIncome] = useState(0);
+  const [totalExpense, setTotalExpense] = useState(0);
+  const [expenseBreakdown, setExpenseBreakdown] = useState<SummaryItem[]>([]);
+  const [taxRate, setTaxRate] = useState(0.1); // Default 10%
+  
+  // Cek hak akses
+  const canRead = profile?.role === "superadmin" || profile?.role === "admin" || profile?.role === "leader" || profile?.role === "viewer";
+  
+  // Helper format
+  const formatCurrency = (amount: number, style: 'currency' | 'decimal' = 'currency') => {
+    return new Intl.NumberFormat("id-ID", {
+      style: style,
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+  
+  // Fetch data Cashflow dan Commission
+  const fetchData = async () => {
+    setLoading(true);
+    if (!canRead && profile) { // Pastikan profile sudah dimuat
+        toast.error("Anda tidak memiliki akses untuk melihat halaman ini.");
+        setLoading(false);
+        return;
+    }
+
+    try {
+      // 1. Fetch Total Komisi Cair (Pendapatan)
+      const { data: commsData, error: commsError } = await supabase
+        .from("commissions")
+        .select(`paid_commission`);
+      
+      if (commsError) throw commsError;
+      
+      const totalPaidCommission = (commsData as CommissionData[]).reduce((sum, c) => sum + c.paid_commission, 0);
+      setTotalIncome(totalPaidCommission);
+
+      // 2. Fetch Total Pengeluaran (Cashflow Expense)
+      const { data: cfData, error: cfError } = await supabase
+        .from("cashflow")
+        .select(`type, amount, category, description`);
+
+      if (cfError) throw cfError;
+
+      const expenseItems = (cfData as CashflowData[]).filter(item => item.type === 'expense');
+      const totalExpenses = expenseItems.reduce((sum, item) => sum + item.amount, 0);
+      setTotalExpense(totalExpenses);
+
+      // 3. Hitung Breakdown Pengeluaran untuk Chart
+      const breakdown: { [key: string]: number } = {
+          'Fixed Cost': 0,
+          'Variable Cost': 0,
+          'Lainnya': 0,
+      };
+
+      expenseItems.forEach(item => {
+        if (item.category === 'fixed') {
+            breakdown['Fixed Cost'] += item.amount;
+        } else if (item.category === 'variable') {
+            breakdown['Variable Cost'] += item.amount;
+        } else {
+            // Ini mencakup pengeluaran tanpa kategori (harusnya tidak terjadi jika form Cashflow divalidasi)
+            breakdown['Lainnya'] += item.amount; 
+        }
+      });
+      
+      // Filter out 'Lainnya' jika 0
+      const chartData: SummaryItem[] = Object.entries(breakdown)
+        .filter(([, value]) => value > 0)
+        .map(([name, value], index) => ({ 
+            name, 
+            value,
+            color: `hsl(var(--chart-${index + 1}))`
+        }));
+        
+      setExpenseBreakdown(chartData);
+
+
+    } catch (error: any) {
+      toast.error("Gagal memuat data Laba Rugi: " + error.message);
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if(profile) { // Hanya fetch jika profile sudah ada
+      fetchData();
+    }
+  }, [profile]); // Refresh saat profile berubah
+  
+  // Perhitungan Laba Rugi
+  const labaKotor = totalIncome - totalExpense;
+  const taxAmount = labaKotor * taxRate;
+  const labaBersih = labaKotor - taxAmount;
+  
+  // Data Chart Laba Rugi Sederhana (Bar Chart untuk perbandingan)
+  const financialSummaryData = [
+    { name: 'Pendapatan (Komisi Cair)', Amount: totalIncome, fill: 'hsl(var(--success))' },
+    { name: 'Pengeluaran', Amount: totalExpense, fill: 'hsl(var(--destructive))' },
+    { name: 'Laba Kotor', Amount: labaKotor, fill: 'hsl(var(--chart-1))' },
+  ];
+  
+  if (loading) {
+      return (
+         <MainLayout>
+           <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+             <Loader2 className="h-10 w-10 animate-spin text-primary" />
+             <p className="ml-3 text-lg text-muted-foreground">Menghitung Laba Rugi...</p>
+           </div>
+         </MainLayout>
+      );
+  }
+
+  // Jika tidak bisa membaca (bukan superadmin, admin, leader, viewer)
+  if (!canRead) {
+     return (
+        <MainLayout>
+           <div className="flex flex-col justify-center items-center h-[calc(100vh-100px)]">
+             <h1 className="text-2xl font-bold">Akses Ditolak</h1>
+             <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat halaman ini.</p>
+           </div>
+         </MainLayout>
+     )
+  }
+
+  return (
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Laba Rugi Bisnis</h1>
+            <p className="text-muted-foreground">Perhitungan otomatis dari Komisi Cair dan Pengeluaran Cashflow.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline">Filter (Soon)</Button>
+            <Button variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Export PDF/CSV
+            </Button>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-success/5 border-success/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-success flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Total Pendapatan
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-success">
+                {formatCurrency(totalIncome)}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-destructive/5 border-destructive/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
+                <TrendingDown className="h-4 w-4" />
+                Total Pengeluaran
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">
+                {formatCurrency(totalExpense)}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={cn(labaKotor >= 0 ? 'bg-primary/5 border-primary/20' : 'bg-destructive/5 border-destructive/20')}>
+            <CardHeader className="pb-3">
+              <CardTitle className={cn("text-sm font-medium", labaKotor >= 0 ? 'text-primary' : 'text-destructive')}>
+                Laba Kotor (Gross Profit)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={cn("text-2xl font-bold", labaKotor >= 0 ? 'text-primary' : 'text-destructive')}>
+                {formatCurrency(labaKotor)}
+              </div>
+            </CardContent>
+          </Card>
+           <Card className={cn(labaBersih >= 0 ? 'bg-success/5 border-success/20' : 'bg-destructive/5 border-destructive/20')}>
+            <CardHeader className="pb-3">
+              <CardTitle className={cn("text-sm font-medium", labaBersih >= 0 ? 'text-success' : 'text-destructive')}>
+                Laba Bersih (Net Income)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={cn("text-2xl font-bold", labaBersih >= 0 ? 'text-success' : 'text-destructive')}>
+                {formatCurrency(labaBersih)}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts and Tax Calculation */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Laba Rugi Bar Chart */}
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>Perbandingan Posisi Keuangan</CardTitle>
+              <CardDescription>Pendapatan, Pengeluaran, dan Laba Kotor.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={financialSummaryData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tickFormatter={(value) => formatCurrency(value, 'decimal')} stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)" }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Bar dataKey="Amount" radius={[4, 4, 0, 0]}>
+                     {financialSummaryData.map((entry, index) => (
+                      <Bar key={`cell-${index}`} dataKey="Amount" fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          
+          {/* Tax Calculation Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Perhitungan Pajak & Laba Bersih</CardTitle>
+              <CardDescription>Asumsi Pajak Bisnis (10% dari Laba Kotor).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none flex items-center gap-2">
+                    <Percent className="h-4 w-4 text-muted-foreground" />
+                    Tarif Pajak (Perubahan Manual)
+                </label>
+                <div className="flex items-center gap-2">
+                   <Input
+                       type="number"
+                       min="0"
+                       max="1"
+                       step="0.01"
+                       value={taxRate}
+                       onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                       className="w-24 text-right"
+                   />
+                   <span className="text-muted-foreground text-sm">({(taxRate * 100).toFixed(0)}%)</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2 pt-3 border-t">
+                  <div className="flex justify-between">
+                     <span className="text-sm">Laba Kotor</span>
+                     <span className="font-medium">{formatCurrency(labaKotor)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                     <span className="text-sm text-destructive">Pajak ({taxRate * 100}%)</span>
+                     <span className="font-medium text-destructive">{formatCurrency(taxAmount)}</span>
+                  </div>
+                   <div className="flex justify-between border-t pt-2">
+                     <span className="font-bold">Laba Bersih</span>
+                     <span className="font-bold text-success">{formatCurrency(labaBersih)}</span>
+                  </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Expense Breakdown */}
+        <Card>
+           <CardHeader>
+             <CardTitle>Breakdown Pengeluaran</CardTitle>
+           </CardHeader>
+           <CardContent>
+             <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={expenseBreakdown} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" tickFormatter={(value) => formatCurrency(value, 'decimal')} stroke="hsl(var(--muted-foreground))" />
+                    <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" width={100} />
+                    <Tooltip
+                        contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)" }}
+                        formatter={(value: number) => formatCurrency(value)}
+                    />
+                    <Bar dataKey="value" name="Total Pengeluaran" fill="hsl(var(--destructive))" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+           </CardContent>
+        </Card>
+        
+      </div>
+    </MainLayout>
+  );
+};
+
+export default ProfitLoss;
