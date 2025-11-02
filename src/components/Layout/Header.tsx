@@ -1,133 +1,110 @@
-import { Bell } from "lucide-react";
+// src/components/Layout/Header.tsx
+
+import { useState } from "react";
+import { Link } from "react-router-dom"; // <-- Link yang kita tambahkan
+import { useAuth } from "@/contexts/AuthContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { useLocation } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+// HAPUS: Sheet, Menu, SidebarNav, dan useMobile
 
-const pageTitles: Record<string, { title: string; description: string }> = {
-  "/dashboard": {
-    title: "Dashboard",
-    description: "Welcome back! Here's what's happening today.",
-  },
-  "/performance": {
-    title: "Performance",
-    description: "Track team and individual performance metrics",
-  },
-  "/daily-report": {
-    title: "Jurnal Harian",
-    description: "Submit your daily work report",
-  },
-  "/attendance": {
-    title: "Absensi",
-    description: "Catat kehadiran kerja Anda di sini.",
-  },
-  "/commissions": {
-    title: "Data Komisi",
-    description: "Lacak data komisi affiliate",
-  },
-  "/cashflow": {
-    title: "Cashflow",
-    description: "Monitor income and expenses",
-  },
-  "/assets": {
-    title: "Manajemen Aset",
-    description: "Kelola inventaris aset perusahaan.",
-  },
-  "/debt-receivable": {
-    title: "Saldo Hutang Piutang",
-    description: "Kelola dan lacak hutang dan piutang perusahaan.",
-  },
-  // --- PERBAIKAN DI BAWAH INI ---
-  "/profit-loss": { 
-    title: "Laba Rugi Bisnis",
-    description: "Perhitungan laba kotor dan laba bersih perusahaan."
-  },
-  // --- BATAS PERBAIKAN ---
-  "/employees": {
-    title: "Direktori Karyawan",
-    description: "Kelola data anggota tim Anda.",
-  },
-  "/devices": {
-    title: "Inventaris Device",
-    description: "Manage team devices and inventory",
-  },
-  "/accounts": {
-    title: "Daftar Akun Affiliate",
-    description: "Kelola akun Shopee dan TikTok affiliate.",
-  },
-  "/groups": {
-    title: "Manage Groups",
-    description: "Kelola grup tim dan alokasi aset.",
-  },
-  // BARIS BARU DITAMBAHKAN
-  "/kpi": {
-    title: "Goal & Target KPI",
-    description: "Lacak pencapaian target tim dan individu.",
-  },
-  // BARIS BARU DITAMBAHKAN
-  "/knowledge": {
-    title: "SOP & Knowledge Center",
-    description: "Pusat tutorial, SOP, dan kebijakan perusahaan.",
-  },
-};
+const UserNav = () => {
+  const { user, profile, signOut } = useAuth();
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
 
-export const Header = () => {
-  const location = useLocation();
-  const pageInfo = pageTitles[location.pathname] || {
-    title: "Affiliate Pro",
-    description: "Shopee Affiliate Management System",
+  const getAvatarFallback = (name?: string) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
   };
 
-  // Pastikan lebar header menyesuaikan dengan sidebar (16rem)
   return (
-    <header className="fixed right-0 top-0 z-30 h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 w-[calc(100%-16rem)]">
-      <div className="flex h-full items-center justify-between px-6">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{pageInfo.title}</h2>
-          <p className="text-sm text-muted-foreground">{pageInfo.description}</p>
-        </div>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+            <Avatar className="h-9 w-9">
+              <AvatarImage src={profile?.avatar_url || ""} alt={profile?.full_name || ""} />
+              <AvatarFallback>{getAvatarFallback(profile?.full_name)}</AvatarFallback>
+            </Avatar>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56" align="end" forceMount>
+          <DropdownMenuLabel className="font-normal">
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium leading-none">
+                {profile?.full_name}
+              </p>
+              <p className="text-xs leading-none text-muted-foreground">
+                {user?.email}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
 
-        <div className="flex items-center gap-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 text-xs flex items-center justify-center bg-destructive">
-                  3
-                </Badge>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <div className="p-2">
-                <p className="text-sm font-semibold mb-2">Notifications</p>
-                <DropdownMenuItem className="flex-col items-start gap-1 p-3">
-                  <p className="text-sm font-medium">New commission recorded</p>
-                  <p className="text-xs text-muted-foreground">
-                    Commission for week M2 has been added
-                  </p>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-1 p-3">
-                  <p className="text-sm font-medium">Daily report submitted</p>
-                  <p className="text-xs text-muted-foreground">
-                    Your report for today has been saved
-                  </p>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex-col items-start gap-1 p-3">
-                  <p className="text-sm font-medium">KPI target updated</p>
-                  <p className="text-xs text-muted-foreground">
-                    New monthly targets have been set
-                  </p>
-                </DropdownMenuItem>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+          {/* Link ke Halaman Profile */}
+          <Link to="/profile">
+            <DropdownMenuItem className="cursor-pointer">
+              Profile
+            </DropdownMenuItem>
+          </Link>
+          <Link to="/profile">
+            <DropdownMenuItem className="cursor-pointer">
+              Settings
+            </DropdownMenuItem>
+          </Link>
+          {/* Akhir Link */}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive cursor-pointer"
+            onClick={() => setIsAlertOpen(true)}
+          >
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Dialog Konfirmasi Logout */}
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apakah Anda yakin ingin keluar?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={signOut}>Ya, Keluar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+};
+
+// Ini adalah header versi desktop saja
+export const Header = () => {
+  return (
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-end border-b bg-background px-8">
+      <UserNav />
     </header>
   );
 };

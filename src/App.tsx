@@ -21,6 +21,7 @@ import DebtReceivable from "./pages/DebtReceivable"; // <-- BARIS BARU
 import ProfitLoss from "./pages/ProfitLoss"; // <-- BARIS BARU
 import KPI from "./pages/KPI"; // <-- BARIS BARU
 import Knowledge from "./pages/Knowledge"; // <-- BARIS BARU
+import Profile from "./pages/Profile"; // <-- 1. IMPORT BARU
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -166,6 +167,16 @@ const App = () => (
               }
             />
             {/* -------------------------------------- */}
+            {/* --- 2. TAMBAHKAN BLOK INI --- */}
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+            {/* --- AKHIR BLOK BARU --- */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
