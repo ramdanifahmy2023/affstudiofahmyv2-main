@@ -15,7 +15,7 @@ import {
   Pencil,
   Trash2,
   Upload,
-  Printer, // <-- 1. IMPORT IKON BARU
+  Printer, // <-- 1. IKON BARU
 } from "lucide-react";
 import {
   Table,
@@ -74,7 +74,7 @@ const Accounts = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [platformFilter, setPlatformFilter] = useState("all");
   
-  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  // --- 2. INISIALISASI DENGAN printData ---
   const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
   
   const [dialogs, setDialogs] = useState<DialogState>({
@@ -194,7 +194,7 @@ const Accounts = () => {
     }
   };
 
-  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT (TAMBAH PRINT) ---
   const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Platform', dataKey: 'platform' },
@@ -226,7 +226,7 @@ const Accounts = () => {
     } else if (type === 'csv') {
         exportToCSV(options);
     } else {
-        printData(options);
+        printData(options); // <-- Tambahkan printData
     }
   };
 

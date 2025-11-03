@@ -47,7 +47,7 @@ import {
   Download,
   CalendarIcon,
   Search,
-  Printer, // <-- 1. IMPORT IKON BARU
+  Printer, 
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -116,7 +116,7 @@ const Commissions = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
 
-  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  // --- 2. HANYA DEKLARASI useExport ---
   const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
 
   const canManage =
@@ -175,17 +175,22 @@ const Commissions = () => {
           accounts!inner ( id, username, group_id )
         `
         )
+        // --- 3. FILTER UTAMA BERDASARKAN RENTANG WAKTU (period_start) ---
         .gte("period_start", startDate)
         .lte("period_start", endDate)
+        // -----------------------------------------------------------------
         .order("period_start", { ascending: false });
 
+      // --- 4. FILTER GROUP PADA TABEL YANG DIJOIN (accounts) ---
       if (groupId !== "all") {
         query = query.eq("accounts.group_id", groupId);
       }
       
+      // --- 5. FILTER SEARCH PADA USERNAME ---
       if (search.trim() !== "") {
          query = query.ilike("accounts.username", `%${search.trim()}%`);
       }
+      // --------------------------------------------------------
 
       const { data, error } = await query;
 
@@ -207,12 +212,14 @@ const Commissions = () => {
     }
   }, []);
 
+  // --- 6. useEffect untuk memicu fetch data saat filter berubah ---
   useEffect(() => {
     if (profile) { 
         fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm);
     }
   }, [profile, fetchCommissions, filterDateStart, filterDateEnd, filterGroup, searchTerm]);
 
+  // --- 7. useEffect untuk mengambil daftar group ---
   useEffect(() => {
     const fetchGroups = async () => {
         const { data, error } = await supabase.from("groups").select("id, name");
@@ -223,7 +230,7 @@ const Commissions = () => {
     fetchGroups();
   }, []);
   
-  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  // FUNGSI HANDLE EXPORT (TETAP SAMA, TIDAK DIUBAH)
   const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Akun', dataKey: 'account_username' },
@@ -413,7 +420,7 @@ const Commissions = () => {
                     />
                   </div>
                   {/* Tombol Export */}
-                  {/* --- 4. TAMBAHKAN OPSI CETAK DI SINI --- */}
+                  {/* --- 8. PERBAIKAN: Tombol Export sudah ada dan menggunakan useExport. Karena Anda ingin skip implementasi, kita biarkan fungsinya memanggil hook yang sudah ada. --- */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="gap-2" disabled={isExporting || commissions.length === 0}>
