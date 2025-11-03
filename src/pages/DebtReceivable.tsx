@@ -26,9 +26,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { AddDebtDialog } from "@/components/Debt/AddDebtDialog";
-import { EditDebtDialog } from "@/components/Debt/EditDebtDialog"; // <-- IMPORT BARU
-import { DeleteDebtAlert } from "@/components/Debt/DeleteDebtAlert"; // <-- IMPORT BARU
+// PENTING: Menggunakan dialog yang lebih modular
+import { AddDebtReceivableDialog } from "@/components/DebtReceivable/AddDebtReceivableDialog"; 
+import { EditDebtDialog } from "@/components/Debt/EditDebtDialog"; 
+import { DeleteDebtAlert } from "@/components/Debt/DeleteDebtAlert"; 
 import { cn } from "@/lib/utils";
 
 // Tipe data dari Supabase (Diperluas untuk Edit/Delete)
@@ -48,6 +49,7 @@ export type DebtData = {
 // Tipe untuk dialog
 type DialogState = {
   add: boolean;
+  addType: "debt" | "receivable"; // Tambahkan state untuk tipe
   edit: DebtData | null;
   delete: DebtData | null;
 };
@@ -56,12 +58,13 @@ const DebtReceivable = () => {
   const { profile } = useAuth();
   const [data, setData] = useState<DebtData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("debt");
+  const [activeTab, setActiveTab] = useState<"debt" | "receivable">("debt");
   const [searchTerm, setSearchTerm] = useState("");
   
   // State untuk Dialogs
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
+    addType: "debt",
     edit: null,
     delete: null,
   });
@@ -154,6 +157,14 @@ const DebtReceivable = () => {
   };
   
   // Handlers untuk Dialog
+  const handleAddClick = () => {
+    setDialogs({ 
+        ...dialogs, 
+        add: true, 
+        addType: activeTab as "debt" | "receivable" // Set tipe berdasarkan tab aktif
+    });
+  }
+  
   const handleEditClick = (debt: DebtData) => {
     setDialogs({ ...dialogs, edit: debt });
   };
@@ -163,7 +174,7 @@ const DebtReceivable = () => {
   };
   
   const handleSuccess = () => {
-     setDialogs({ add: false, edit: null, delete: null });
+     setDialogs({ ...dialogs, add: false, edit: null, delete: null });
      fetchData(); // Refresh data
   }
 
@@ -247,7 +258,7 @@ const DebtReceivable = () => {
             <p className="text-muted-foreground">Lacak semua kewajiban dan tagihan.</p>
           </div>
           {canCreate && (
-            <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
+            <Button className="gap-2" onClick={handleAddClick}>
               <Plus className="h-4 w-4" />
               Tambah Catatan
             </Button>
@@ -303,7 +314,7 @@ const DebtReceivable = () => {
         {/* Tabs and Table */}
         <Card>
           <CardHeader>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as "debt" | "receivable")}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <TabsList>
                   <TabsTrigger value="debt">Hutang (Kewajiban)</TabsTrigger>
@@ -333,7 +344,7 @@ const DebtReceivable = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
             ) : (
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as "debt" | "receivable")}>
                 {/* Hutang Tab */}
                 <TabsContent value="debt" className="mt-0">
                   {renderTable(debts)}
@@ -351,8 +362,9 @@ const DebtReceivable = () => {
       
       {/* RENDER SEMUA DIALOG */}
       {canCreate && (
-         <AddDebtDialog
+         <AddDebtReceivableDialog
            open={dialogs.add}
+           type={dialogs.addType} // Kirim tipe dinamis
            onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
            onSuccess={handleSuccess}
          />

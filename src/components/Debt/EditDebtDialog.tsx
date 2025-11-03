@@ -46,21 +46,35 @@ interface Group {
   name: string;
 }
 
-// Skema validasi Zod
+// === HELPER UNTUK FORMAT/PARSE (Konsistensi) ===
+const formatCurrencyInput = (value: string | number) => {
+   if (typeof value === 'number') value = value.toString();
+   if (!value) return "";
+   const num = value.replace(/[^0-9]/g, "");
+   if (num === "0") return "0";
+   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
+};
+
+const parseCurrencyInput = (value: string) => {
+   return value.replace(/[^0-9]/g, "");
+};
+// ============================================================================
+
+
+// Skema validasi Zod (diperbarui untuk menggunakan string input)
 const debtFormSchema = z.object({
   type: z.enum(["debt", "receivable"]),
   transaction_date: z.date({ required_error: "Tanggal wajib diisi." }),
   counterparty: z.string().min(3, { message: "Nama pihak wajib diisi." }),
-  amount: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(1, { message: "Nominal wajib diisi." })
-  ),
+  amount: z.string() 
+    .min(1, { message: "Nominal wajib diisi." })
+    .refine((val) => parseFloat(val.replace(/[^0-9]/g, "")) > 0, { message: "Nominal harus lebih dari 0." }),
   due_date: z.date().optional().nullable(),
   status: z.enum(["Belum Lunas", "Cicilan", "Lunas"], {
     required_error: "Status wajib dipilih.",
   }),
   description: z.string().optional().nullable(),
-  group_id: z.string().uuid().optional().nullable(),
+  group_id: z.string().optional().nullable(),
 });
 
 type DebtFormValues = z.infer<typeof debtFormSchema>;
@@ -76,16 +90,9 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   
-  // Helper format mata uang
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
-
   const form = useForm<DebtFormValues>({
     resolver: zodResolver(debtFormSchema),
-    defaultValues: { amount: 0, status: "Belum Lunas", description: null, group_id: null },
+    defaultValues: { amount: "0", status: "Belum Lunas", description: null, group_id: null },
   });
 
   // Fetch data group & isi form
@@ -103,8 +110,8 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
         type: debt.type,
         transaction_date: new Date(debt.created_at),
         counterparty: debt.counterparty,
-        amount: debt.amount,
-        due_date: debt.due_date ? new Date(debt.due_date) : null,
+        amount: debt.amount.toString(), // Ubah number ke string
+        due_date: debt.due_date ? new Date(debt.due_date + "T00:00:00") : null,
         status: debt.status as any,
         description: debt.description,
         group_id: groupId || 'no-group',
@@ -117,14 +124,20 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
     setLoading(true);
     try {
       const finalGroupId = values.group_id === "no-group" ? null : values.group_id;
+      // Parse amount string menjadi number di sini
+      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      if (isNaN(finalAmount) || finalAmount <= 0) {
+        throw new Error("Nominal tidak valid atau kosong.");
+      }
+
 
       const { error } = await supabase
         .from("debt_receivable")
         .update({
           type: values.type,
-          transaction_date: format(values.transaction_date, "yyyy-MM-dd"),
+          created_at: format(values.transaction_date, "yyyy-MM-dd"),
           counterparty: values.counterparty,
-          amount: values.amount,
+          amount: finalAmount,
           due_date: values.due_date ? format(values.due_date, "yyyy-MM-dd") : null,
           status: values.status,
           description: values.description,
@@ -251,8 +264,8 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
                       <Input type="text" placeholder="1000000"
-                       onChange={(e) => field.onChange(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0)}
-                       value={formatCurrency(field.value || 0)}
+                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
+                       onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
