@@ -56,11 +56,21 @@ interface EditKnowledgeDialogProps {
   knowledgeToEdit: ProcessedKnowledgeData | null;
 }
 
-// Helper untuk Reverse Processing
+// Helper untuk Reverse Processing: Mengembalikan URL embed ke URL biasa 
 const reverseProcessContent = (item: ProcessedKnowledgeData | null) => {
     if (!item) return "";
-    // Biarkan konten apa adanya, karena edit form akan otomatis
-    // mengkonversi ulang saat submit.
+    
+    if (item.type === "YouTube") {
+        // Coba konversi dari URL embed (youtube.com/embed/ID) kembali ke watch URL jika bisa
+        const embedIdMatch = item.content.match(/\/embed\/([^/?]+)/);
+        if (embedIdMatch) {
+             return `https://www.youtube.com/watch?v=${embedIdMatch[1]}`;
+        }
+    } else if (item.type === "Google Drive") {
+        // Coba konversi dari URL preview (/preview) kembali ke URL view (/view)
+        return item.content.replace("/preview", "/view");
+    }
+    
     return item.content;
 }
 
@@ -91,7 +101,7 @@ export const EditKnowledgeDialog = ({ open, onOpenChange, onSuccess, knowledgeTo
             title: knowledgeToEdit.title,
             category: knowledgeToEdit.category as any,
             content_type: knowledgeToEdit.type,
-            content: reverseProcessContent(knowledgeToEdit),
+            content: reverseProcessContent(knowledgeToEdit), // Gunakan reverse process
             tags: tagsString,
         });
     }
@@ -103,13 +113,26 @@ export const EditKnowledgeDialog = ({ open, onOpenChange, onSuccess, knowledgeTo
     try {
       // Proses 'content' (sama seperti AddKnowledgeDialog)
       let finalContent = values.content;
+      
       if (values.content_type === "YouTube") {
-        const videoId = values.content.match(/(?:v=)([^&]+)/)?.[1] || values.content.split('/').pop();
+        const match = values.content.match(/(?:v=|\/embed\/|\/youtu\.be\/)([^&"']+)/);
+        const videoId = match ? match[1] : values.content.split('/').pop();
+
         if (videoId) {
            finalContent = `https://www.youtube.com/embed/${videoId}`;
+        } else {
+             throw new Error("URL YouTube tidak valid.");
         }
       } else if (values.content_type === "Google Drive") {
         finalContent = values.content.replace("/view", "/preview").replace("/edit", "/preview");
+        if (!finalContent.includes('/preview')) {
+             const idMatch = finalContent.match(/\/d\/([^/]+)/);
+             if(idMatch) {
+                 finalContent = `https://docs.google.com/document/d/${idMatch[1]}/preview`;
+             } else {
+                 throw new Error("URL Google Drive tidak valid. Pastikan izin share 'Anyone with the link'.");
+             }
+        }
       }
 
       // Proses 'tags' dari string "a, b, c" menjadi array ["a", "b", "c"]
@@ -135,7 +158,7 @@ export const EditKnowledgeDialog = ({ open, onOpenChange, onSuccess, knowledgeTo
       onSuccess(); 
     } catch (error: any) {
       console.error(error);
-      toast.error(`Terjadi kesalahan: ${error.message}`);
+      toast.error(`Gagal menyimpan target: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -232,7 +255,7 @@ export const EditKnowledgeDialog = ({ open, onOpenChange, onSuccess, knowledgeTo
                       />
                     ) : (
                       <Input 
-                        placeholder={contentType === 'YouTube' ? 'Link YouTube Embed (contoh: https://www.youtube.com/embed/...) atau URL biasa' : 'Link Google Drive (pastikan link share "Anyone with the link")'} 
+                        placeholder={contentType === 'YouTube' ? 'URL YouTube biasa (cth: https://www.youtube.com/watch?v=...)' : 'URL Google Drive (cth: https://docs.google.com/document/d/.../view)'} 
                         {...field} 
                       />
                     )}

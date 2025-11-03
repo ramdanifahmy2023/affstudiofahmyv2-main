@@ -66,8 +66,10 @@ type DialogState = {
 
 const KPI = () => {
   const { profile } = useAuth();
-  const [kpiData, setKpiData] = useState<CalculatedKpi[]>([]);
+  const [kpiData, setKpiData] = useState<CalculatedKpi[]>([]
+);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
     edit: null,
@@ -181,6 +183,11 @@ const KPI = () => {
      setDialogs({ add: false, edit: null, delete: null });
      fetchKpiData(); // Refresh data
   };
+  
+  // Filter lokal berdasarkan search term
+  const filteredKpiData = kpiData.filter(item => 
+    item.employees?.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Jika tidak bisa membaca (akses ditolak)
   if (!canRead && !loading) {
@@ -219,7 +226,12 @@ const KPI = () => {
              <div className="flex items-center gap-4 pt-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Cari nama karyawan..." className="pl-10 w-full" />
+                <Input 
+                  placeholder="Cari nama karyawan..." 
+                  className="pl-10 w-full" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
               <Button variant="outline" className="gap-2" disabled>
                 <Download className="h-4 w-4" />
@@ -248,14 +260,14 @@ const KPI = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {kpiData.length === 0 && (
+                  {filteredKpiData.length === 0 && (
                      <TableRow>
                        <TableCell colSpan={canManage ? 8 : 7} className="text-center h-24">
-                         Belum ada data target KPI yang ditetapkan.
+                         Belum ada data target KPI yang ditetapkan atau tidak ditemukan.
                        </TableCell>
                      </TableRow>
                   )}
-                  {kpiData.map((item, index) => (
+                  {filteredKpiData.map((item, index) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-bold text-lg">#{index + 1}</TableCell>
                       <TableCell className="font-medium">

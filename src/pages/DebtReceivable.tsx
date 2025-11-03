@@ -74,7 +74,7 @@ const DebtReceivable = () => {
     profile?.role === "superadmin" ||
     profile?.role === "leader" ||
     profile?.role === "admin";
-  const canManage = profile?.role === "superadmin";
+  const canManage = profile?.role === "superadmin" || profile?.role === "admin"; // Admin & Superadmin bisa Manage
 
   // Helper format
   const formatCurrency = (amount: number) => {
@@ -88,7 +88,8 @@ const DebtReceivable = () => {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
     try {
-      return format(new Date(dateString), "dd MMM yyyy");
+      // Tambahkan "T00:00:00" untuk menghindari masalah timezone
+      return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "dd MMM yyyy");
     } catch (e) { return "-"; }
   }
 
@@ -139,8 +140,9 @@ const DebtReceivable = () => {
       t.counterparty.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalDebt = debts.filter(s => s.status !== 'Lunas').reduce((sum, item) => sum + item.amount, 0);
-  const totalReceivable = receivables.filter(s => s.status !== 'Lunas').reduce((sum, item) => sum + item.amount, 0);
+  // Filter hanya yang Belum Lunas atau Cicilan untuk Summary
+  const totalDebt = debts.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
+  const totalReceivable = receivables.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
   const netPosition = totalReceivable - totalDebt;
 
   const getStatusBadge = (status: string | null) => {
@@ -330,7 +332,7 @@ const DebtReceivable = () => {
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" className="gap-2 shrink-0">
+                  <Button variant="outline" className="gap-2 shrink-0" disabled>
                     <Download className="h-4 w-4" />
                     Export
                   </Button>
@@ -371,18 +373,22 @@ const DebtReceivable = () => {
        )}
        {canManage && (
          <>
-           <EditDebtDialog
-             open={!!dialogs.edit}
-             onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
-             onSuccess={handleSuccess}
-             debt={dialogs.edit}
-           />
-           <DeleteDebtAlert
-             open={!!dialogs.delete}
-             onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
-             onSuccess={handleSuccess}
-             debt={dialogs.delete}
-           />
+           {dialogs.edit && (
+             <EditDebtDialog
+               open={!!dialogs.edit}
+               onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+               onSuccess={handleSuccess}
+               debt={dialogs.edit}
+             />
+           )}
+           {dialogs.delete && (
+             <DeleteDebtAlert
+               open={!!dialogs.delete}
+               onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
+               onSuccess={handleSuccess}
+               debt={dialogs.delete}
+             />
+           )}
          </>
        )}
     </MainLayout>

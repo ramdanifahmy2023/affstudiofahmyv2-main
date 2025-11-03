@@ -117,11 +117,13 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
       // 1. Ambil SEMUA Employee ID yang memiliki role yang ditargetkan
       const { data: employeeData, error: employeeError } = await supabase
           .from("employees")
+          // Join untuk mendapatkan role dari profiles
           .select("id, profiles!employees_profile_id_fkey(role)") 
           .eq("profiles.role", values.target_role);
 
       if (employeeError) throw employeeError;
       
+      // Filter data agar hanya mengambil yang memiliki roles
       const employeeIds = employeeData.map((e: any) => e.id);
 
       if (employeeIds.length === 0) {

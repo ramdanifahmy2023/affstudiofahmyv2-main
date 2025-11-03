@@ -1,3 +1,5 @@
+// src/components/Knowledge/AddKnowledgeDialog.tsx
+
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -61,12 +63,28 @@ export const AddKnowledgeDialog = ({ open, onOpenChange, onSuccess }: AddKnowled
   const form = useForm<KnowledgeFormValues>({
     resolver: zodResolver(knowledgeFormSchema),
     defaultValues: {
+      title: "",
       category: "SOP",
       content_type: "YouTube",
+      content: "",
+      tags: "",
     },
   });
 
   const contentType = form.watch("content_type");
+
+  // Reset form saat ditutup atau sukses
+  useEffect(() => {
+    if (!open) {
+      form.reset({
+        title: "",
+        category: "SOP",
+        content_type: "YouTube",
+        content: "",
+        tags: "",
+      });
+    }
+  }, [open, form]);
 
   const onSubmit = async (values: KnowledgeFormValues) => {
     setLoading(true);
@@ -75,15 +93,35 @@ export const AddKnowledgeDialog = ({ open, onOpenChange, onSuccess }: AddKnowled
       let finalContent = values.content;
       if (values.content_type === "YouTube") {
         // Konversi link YouTube biasa ke link embed
-        const videoId = values.content.match(/(?:v=)([^&]+)/)?.[1] || values.content.split('/').pop();
-        finalContent = `https://www.youtube.com/embed/${videoId}`;
+        // Cari video ID (handle watch?v= atau youtu.be/xxx)
+        const match = values.content.match(/(?:v=|\/embed\/|\/youtu\.be\/)([^&"']+)/);
+        const videoId = match ? match[1] : values.content.split('/').pop();
+
+        if (videoId) {
+           finalContent = `https://www.youtube.com/embed/${videoId}`;
+        } else {
+             throw new Error("URL YouTube tidak valid.");
+        }
+        
       } else if (values.content_type === "Google Drive") {
-        // Konversi link Google Drive ke link embed
+        // Konversi link Google Drive ke link embed (menggunakan /preview)
         finalContent = values.content.replace("/view", "/preview").replace("/edit", "/preview");
+        if (!finalContent.includes('/preview')) {
+             // Jika pengguna hanya memberikan ID atau link yang aneh
+             const idMatch = finalContent.match(/\/d\/([^/]+)/);
+             if(idMatch) {
+                 finalContent = `https://docs.google.com/document/d/${idMatch[1]}/preview`;
+             } else {
+                 throw new Error("URL Google Drive tidak valid atau tidak memiliki format /view yang diharapkan. Pastikan izin share 'Anyone with the link'.");
+             }
+        }
       }
       
       // Proses 'tags' dari string "a, b, c" menjadi array ["a", "b", "c"]
       const tagsArray = values.tags ? values.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+
+      // Menyimpan tipe konten ke dalam tags (untuk di proses saat fetch/edit)
+      const tagsWithTipe = [...tagsArray, `__type:${values.content_type}`];
 
       const { error } = await supabase
         .from("knowledge_base")
@@ -91,17 +129,13 @@ export const AddKnowledgeDialog = ({ open, onOpenChange, onSuccess }: AddKnowled
           title: values.title,
           category: values.category,
           content: finalContent, // Simpan URL embed atau teks
-          tags: tagsArray,
+          tags: tagsWithTipe,
           created_by: profile?.id,
-          // Kita tambahkan 'type' di kolom 'tags' sementara, atau kita harus modifikasi DB
-          // Untuk saat ini, kita simpan saja di 'tags'
-          tags: [...tagsArray, `__type:${values.content_type}`] // Menyimpan tipe di tags
         });
 
       if (error) throw error;
 
       toast.success("Materi baru berhasil ditambahkan.");
-      form.reset();
       onSuccess(); // Refresh list & tutup dialog
     } catch (error: any) {
       console.error(error);
@@ -202,7 +236,7 @@ export const AddKnowledgeDialog = ({ open, onOpenChange, onSuccess }: AddKnowled
                       />
                     ) : (
                       <Input 
-                        placeholder={contentType === 'YouTube' ? 'https://www.youtube.com/watch?v=...' : 'https://docs.google.com/document/d/...'} 
+                        placeholder={contentType === 'YouTube' ? 'https://www.youtube.com/watch?v=...' : 'https://docs.google.com/document/d/.../view'} 
                         {...field} 
                       />
                     )}

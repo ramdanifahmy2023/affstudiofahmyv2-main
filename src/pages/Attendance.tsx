@@ -71,13 +71,13 @@ const Attendance = () => {
     } finally {
       setLoading(false);
     }
-  }, [employee, today]); // Dependencies yang benar untuk useCallback
+  }, [employee, today]);
 
 
   // Ambil data saat halaman dimuat
   useEffect(() => {
     fetchAttendance();
-  }, [fetchAttendance]); // Gunakan fetchAttendance (yang sekarang stabil) sebagai dependency
+  }, [fetchAttendance]); 
 
   // Fungsi untuk menangani Absen Masuk
   const handleCheckIn = async () => {

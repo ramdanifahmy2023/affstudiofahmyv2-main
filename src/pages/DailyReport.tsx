@@ -192,7 +192,7 @@ const DailyReport = () => {
         id: uuidv4(),
         deviceId: "",
         accountId: "",
-        shift: deviceReports[0]?.shift || "",
+        shift: "",
         liveStatus: "",
         kategoriProduk: "",
         openingBalance: 0,
@@ -294,14 +294,13 @@ const DailyReport = () => {
 
       if (deviceError) throw deviceError;
 
-      // Logika Absen Keluar (Dihapus dari sini karena tidak ada di blueprint DB)
-      // Asumsi: Absen Keluar akan di-handle oleh trigger DB saat daily_reports di-upsert/insert.
-      // Jika Absensi harus diupdate terpisah, perlu tambahkan logika:
-      // 
-      // await supabase.from('attendance')
-      //   .update({ check_out: new Date().toISOString() })
-      //   .eq('employee_id', employee.id)
-      //   .eq('attendance_date', formattedDate);
+      // Logika Absen Keluar (Diasumsikan ditangani Trigger DB)
+      // Jika Absensi harus diupdate terpisah, tambahkan:
+      await supabase.from('attendance')
+         .update({ check_out: new Date().toISOString() })
+         .eq('employee_id', employee.id)
+         .eq('attendance_date', formattedDate)
+         .is('check_out', null); // Hanya update jika check_out belum ada
 
       toast.success("Laporan harian berhasil dikirim!");
       toast.info("Absen keluar Anda telah otomatis tercatat.");

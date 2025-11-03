@@ -60,7 +60,7 @@ const accountFormSchema = z.object({
   email: z.string().email({ message: "Format email tidak valid." }),
   // Password opsional saat edit (dikosongkan = tidak diubah)
   password: z.string().optional(), 
-  phone: z.string().optional().nullable(),
+  phone: z.string().optional().nullable().or(z.literal('')),
   account_status: z.enum(["active", "banned_temporary", "banned_permanent"]),
   data_status: z.enum(["empty", "in_progress", "rejected", "verified"]),
   // Field non-DB, hanya untuk UI
@@ -218,7 +218,7 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>No. HP</FormLabel>
+                    <FormLabel>No. HP (Opsional)</FormLabel>
                     <FormControl>
                       <Input type="tel" placeholder="0812..." {...field} value={field.value ?? ""} />
                     </FormControl>

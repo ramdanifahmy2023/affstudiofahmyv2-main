@@ -71,6 +71,20 @@ interface EditTransactionDialogProps {
   transaction: TransactionData | null;
 }
 
+// === HELPER UNTUK FORMAT/PARSE ===
+const formatCurrencyInput = (value: string | number) => {
+   if (typeof value === 'number') value = value.toString();
+   if (!value) return "";
+   const num = value.replace(/[^0-9]/g, "");
+   if (num === "0") return "0";
+   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
+};
+  
+const parseCurrencyInput = (value: string) => {
+   return value.replace(/[^0-9]/g, "");
+};
+// ===================================
+
 export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transaction }: EditTransactionDialogProps) => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -79,7 +93,6 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
   
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionFormSchema),
-    // --- PERBAIKAN: Tambahkan Default Values ---
     defaultValues: {
       transaction_date: new Date(),
       type: undefined,
@@ -89,7 +102,6 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
       group_id: null,
       proof_url: "",
     },
-    // --- AKHIR PERBAIKAN ---
   });
   
   // Ambil data group
@@ -110,18 +122,23 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
     } else {
       setCategories([]);
     }
-  }, [transactionType]);
+    // Jika tipe berubah, reset category jika nilai lama tidak ada di list baru
+    if (transactionType && !categories.includes(form.getValues("category"))) {
+        form.setValue("category", "");
+    }
+  }, [transactionType, form]);
   
   // Isi form saat dialog dibuka
   useEffect(() => {
     if (transaction && open) {
       form.reset({
-        transaction_date: new Date(transaction.transaction_date + "T00:00:00"),
+        // Tambahkan "T00:00:00" untuk menghindari masalah timezone
+        transaction_date: new Date(transaction.transaction_date + "T00:00:00"), 
         type: transaction.type,
         category: transaction.category,
         amount: transaction.amount.toString(), // Ubah number ke string
+        group_id: transaction.groups?.id || "no-group", // Set ke "no-group" jika null
         description: transaction.description,
-        group_id: transaction.groups?.id || null,
         proof_url: transaction.proof_url || "",
       });
     }
@@ -154,7 +171,6 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
       if (error) throw error;
 
       toast.success(`Transaksi "${values.description}" berhasil diperbarui.`);
-      form.reset();
       onSuccess();
     } catch (error: any) {
       console.error(error);
@@ -164,19 +180,6 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
     }
   };
 
-  // --- PERBAIKAN HELPER (Seperti di Komisi) ---
-  const formatCurrencyInput = (value: string | number) => {
-     if (typeof value === 'number') value = value.toString();
-     if (!value) return "";
-     const num = value.replace(/[^0-9]/g, "");
-     if (num === "0") return "0";
-     return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-  };
-  
-  const parseCurrencyInput = (value: string) => {
-     return value.replace(/[^0-9]/g, "");
-  };
-  // --- AKHIR PERBAIKAN HELPER ---
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -250,13 +253,11 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
                   <FormItem>
                     <FormLabel>Nominal</FormLabel>
                     <FormControl>
-                      {/* --- INPUT DIPERBARUI --- */}
                       <Input 
                         placeholder="Rp 0" 
                         value={formatCurrencyInput(field.value)}
                         onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
-                      {/* --- AKHIR PERBARUAN --- */}
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -290,16 +291,14 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Group (Opsional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <Select onValueChange={field.onChange} value={field.value ?? "no-group"}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Pilih Group" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {/* --- PERBAIKAN BUG SelectItem --- */}
                         <SelectItem value="no-group">Tidak ada group</SelectItem>
-                        {/* --- AKHIR PERBAIKAN --- */}
                         {groups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                         ))}

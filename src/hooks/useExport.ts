@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-// import jsPDF from 'jspdf'; // DIHAPUS
-// import 'jspdf-autotable'; // DIHAPUS
+// ✅ STATIC IMPORT (Wajib terinstal dan terdaftar sebagai side effect)
+import jsPDF from 'jspdf';
+import 'jspdf-autotable'; 
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -12,22 +13,17 @@ declare module 'jspdf' {
 }
 
 interface ExportOptions {
-  filename: string;
-  title: string;
-  data: any[];
-  columns: { header: string; dataKey: string }[];
+// ...
 }
 
 export const useExport = () => {
   const [isExporting, setIsExporting] = useState(false);
 
+  // MENGUBAH FUNGSI KEMBALI MENJADI ASYNC HANYA JIKA ADA PROSES AWAIT LAIN
   const exportToPDF = async (options: ExportOptions) => {
     setIsExporting(true);
     try {
-      // ✅ PERBAIKAN: Gunakan Dynamic Import untuk memaksa pemuatan (Loading is async)
-      const { default: jsPDF } = await import('jspdf');
-      await import('jspdf-autotable'); 
-      
+      // TIDAK ADA LAGI DYNAMIC IMPORT DI SINI
       const doc = new jsPDF();
       
       // Header perusahaan
@@ -45,8 +41,7 @@ export const useExport = () => {
       doc.setFontSize(14);
       doc.text(options.title, 14, 58);
       
-      // Tabel data
-      // autoTable sekarang harus tersedia karena import di atas sudah dieksekusi
+      // Tabel data (Baris 50 tempat error terjadi)
       doc.autoTable({
         head: [options.columns.map(col => col.header)],
         body: options.data.map(row => 

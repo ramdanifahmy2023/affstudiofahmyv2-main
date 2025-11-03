@@ -82,11 +82,26 @@ const RenderContent = ({ item, isExpanded }: { item: ProcessedKnowledgeData, isE
     );
   }
   
-  if (item.type === "Google Drive" || (item.type === "YouTube" && !isExpanded)) {
+  if (item.type === "Google Drive" && isExpanded) {
+     // Gunakan iframe untuk embedding Google Drive (jika URL sudah diformat ke /preview)
+      return (
+        <div className="aspect-video w-full">
+          <iframe
+            src={item.content}
+            title={item.title}
+            className="w-full h-full rounded-md border"
+            allowFullScreen
+          ></iframe>
+        </div>
+      );
+  }
+  
+  // Jika konten adalah link (YouTube/Drive) tapi Accordion tidak expand, tampilkan link
+  if ((item.type === "YouTube" || item.type === "Google Drive") && !isExpanded) {
       return (
          <a href={item.content} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center gap-2">
              <LinkIcon className="h-4 w-4" />
-             Lihat {item.type}
+             Lihat {item.type} (Buka untuk melihat)
          </a>
       );
   }
@@ -108,6 +123,7 @@ const Knowledge = () => {
   const [knowledgeBase, setKnowledgeBase] = useState<ProcessedKnowledgeData[]>([]);
   const [groupedKnowledge, setGroupedKnowledge] = useState<Record<string, ProcessedKnowledgeData[]>>({});
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   
   // State untuk Dialogs
   const [dialogs, setDialogs] = useState<DialogState>({
@@ -148,6 +164,13 @@ const Knowledge = () => {
         const typeTag = tags.find(t => t.startsWith("__type:"));
         if (typeTag) {
           type = typeTag.split(":")[1] as ProcessedKnowledgeData["type"];
+        } else {
+             // Fallback: Jika tidak ada tag tipe, coba deteksi dari URL
+            if (item.content.includes("youtube.com") || item.content.includes("youtu.be")) {
+                type = "YouTube";
+            } else if (item.content.includes("docs.google.com") || item.content.includes("drive.google.com")) {
+                type = "Google Drive";
+            }
         }
         
         return {
@@ -159,17 +182,6 @@ const Knowledge = () => {
       
       setKnowledgeBase(processedData);
       
-      // Kelompokkan data berdasarkan kategori
-      const groups: Record<string, ProcessedKnowledgeData[]> = {};
-      for (const item of processedData) {
-        const category = item.category || "Lainnya";
-        if (!groups[category]) {
-          groups[category] = [];
-        }
-        groups[category].push(item);
-      }
-      setGroupedKnowledge(groups);
-
     } catch (error: any) {
       toast.error("Gagal memuat materi SOP.");
       console.error(error);
@@ -182,6 +194,29 @@ const Knowledge = () => {
     fetchData();
   }, [profile]);
   
+  // LOGIKA FILTER DAN GROUPING
+  useEffect(() => {
+      const filteredData = knowledgeBase.filter(item => {
+          const searchLower = searchTerm.toLowerCase();
+          return item.title.toLowerCase().includes(searchLower) ||
+                 item.category.toLowerCase().includes(searchLower) ||
+                 item.tags.some(tag => tag.toLowerCase().includes(searchLower));
+      });
+
+      // Kelompokkan data yang sudah difilter berdasarkan kategori
+      const groups: Record<string, ProcessedKnowledgeData[]> = {};
+      for (const item of filteredData) {
+        const category = item.category || "Lainnya";
+        if (!groups[category]) {
+          groups[category] = [];
+        }
+        groups[category].push(item);
+      }
+      setGroupedKnowledge(groups);
+
+  }, [searchTerm, knowledgeBase]);
+
+
   const handleEditClick = (item: ProcessedKnowledgeData) => {
     setDialogs({ ...dialogs, edit: item });
   };
@@ -193,6 +228,11 @@ const Knowledge = () => {
   const handleSuccess = () => {
      setDialogs({ add: false, edit: null, delete: null });
      fetchData(); // Refresh data
+  }
+  
+  const handleAccordionChange = (value: string) => {
+      // Logic untuk memastikan hanya satu item di-expand dan mengupdate state expandedItem
+      setExpandedItem(value);
   }
 
   return (
@@ -210,6 +250,16 @@ const Knowledge = () => {
             </Button>
           )}
         </div>
+        
+        <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+                placeholder="Cari Judul, Kategori, atau Tags..."
+                className="pl-10 w-full"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
+        </div>
 
         {loading ? (
           <div className="flex justify-center items-center h-64">
@@ -220,17 +270,21 @@ const Knowledge = () => {
             {Object.keys(groupedKnowledge).length === 0 ? (
                <Card>
                  <CardContent className="pt-6 text-center text-muted-foreground">
-                   Belum ada materi SOP atau tutorial yang ditambahkan.
+                   {searchTerm ? "Materi tidak ditemukan." : "Belum ada materi SOP atau tutorial yang ditambahkan."}
                  </CardContent>
                </Card>
             ) : (
-                <Accordion type="single" collapsible defaultValue={Object.keys(groupedKnowledge)[0]}>
+                <Accordion 
+                    type="single" 
+                    collapsible 
+                    value={expandedItem || undefined} // Kontrol item yang terbuka
+                    onValueChange={handleAccordionChange}
+                >
                   {Object.entries(groupedKnowledge).map(([category, items]) => (
                     <AccordionItem value={category} key={category}>
                       <AccordionTrigger 
                          className="text-xl font-semibold"
-                         // Toggle state expanded untuk mengontrol RenderContent
-                         onClick={() => setExpandedItem(expandedItem === category ? null : category)}
+                         // Logika handleAccordionChange di atas sudah mengurus toggle state expandedItem
                       >
                         {category} ({items.length})
                       </AccordionTrigger>
@@ -273,9 +327,9 @@ const Knowledge = () => {
                               )}
                             </CardHeader>
                             <CardContent>
-                              {/* Kirim status expanded */}
+                              {/* Kirim status expanded hanya jika item ini yang sedang dibuka */}
                               <RenderContent item={item} isExpanded={expandedItem === category} />
-                              <div className="flex gap-2 mt-4">
+                              <div className="flex gap-2 mt-4 flex-wrap">
                                 {item.tags.map(tag => (
                                   <Badge key={tag} variant="secondary">{tag}</Badge>
                                 ))}
@@ -303,20 +357,24 @@ const Knowledge = () => {
            />
            
            {/* Dialog Edit */}
-           <EditKnowledgeDialog
-             open={!!dialogs.edit}
-             onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
-             onSuccess={handleSuccess}
-             knowledgeToEdit={dialogs.edit}
-           />
+           {dialogs.edit && (
+             <EditKnowledgeDialog
+               open={!!dialogs.edit}
+               onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+               onSuccess={handleSuccess}
+               knowledgeToEdit={dialogs.edit}
+             />
+           )}
            
            {/* Alert Hapus */}
-           <DeleteKnowledgeAlert
-             open={!!dialogs.delete}
-             onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
-             onSuccess={handleSuccess}
-             knowledgeToDelete={dialogs.delete}
-           />
+           {dialogs.delete && (
+             <DeleteKnowledgeAlert
+               open={!!dialogs.delete}
+               onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
+               onSuccess={handleSuccess}
+               knowledgeToDelete={dialogs.delete}
+             />
+           )}
          </>
        )}
     </MainLayout>

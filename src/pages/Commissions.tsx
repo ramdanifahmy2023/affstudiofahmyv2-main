@@ -100,12 +100,12 @@ const Commissions = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    // Tambahkan "T00:00:00" untuk menghindari masalah timezone saat new Date()
+    // Tambahkan "T00:00:00" untuk menghindari masalah timezone
     const date = new Date(dateString + "T00:00:00"); 
     return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
   };
 
-  // Fungsi ambil data
+  // Fungsi ambil data dan kalkulasi summary
   const fetchCommissions = async () => {
     setLoading(true);
     try {
@@ -168,7 +168,7 @@ const Commissions = () => {
           )}
         </div>
 
-        {/* --- KARTU SUMMARY BARU --- */}
+        {/* --- KARTU SUMMARY --- */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -206,7 +206,7 @@ const Commissions = () => {
         <Card>
           <CardHeader>
             <CardTitle>Riwayat Komisi</CardTitle>
-            {/* Tambahkan Filter/Search di sini jika diperlukan */}
+            <Button variant="outline" disabled>Export (Soon)</Button>
           </CardHeader>
           <CardContent>
             {loading ? (

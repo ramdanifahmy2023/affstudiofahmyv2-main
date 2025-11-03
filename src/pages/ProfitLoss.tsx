@@ -25,9 +25,9 @@ const ProfitLoss = () => {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   const [expenseBreakdown, setExpenseBreakdown] = useState<SummaryItem[]>([]);
-  const [taxRate, setTaxRate] = useState(0.1); // Default 10% [cite: 121]
+  const [taxRate, setTaxRate] = useState(0.1); // Default 10% 
   
-  // Cek hak akses [cite: 4]
+  // Cek hak akses 
   const canRead = profile?.role === "superadmin" || profile?.role === "admin" || profile?.role === "leader" || profile?.role === "viewer";
   
   // Helper format
@@ -49,7 +49,7 @@ const ProfitLoss = () => {
     }
 
     try {
-      // 1. Fetch Total Komisi Cair (Pendapatan) [cite: 120]
+      // 1. Fetch Total Komisi Cair (Pendapatan) 
       const { data: commsData, error: commsError } = await supabase
         .from("commissions")
         .select(`paid_commission`);
@@ -59,7 +59,7 @@ const ProfitLoss = () => {
       const totalPaidCommission = (commsData as CommissionData[]).reduce((sum, c) => sum + (c.paid_commission || 0), 0);
       setTotalIncome(totalPaidCommission);
 
-      // 2. Fetch Total Pengeluaran (Cashflow Expense) [cite: 121]
+      // 2. Fetch Total Pengeluaran (Cashflow Expense) 
       const { data: cfData, error: cfError } = await supabase
         .from("cashflow")
         .select(`type, amount, category, description`);
@@ -70,7 +70,7 @@ const ProfitLoss = () => {
       const totalExpenses = expenseItems.reduce((sum, item) => sum + item.amount, 0);
       setTotalExpense(totalExpenses);
 
-      // 3. Hitung Breakdown Pengeluaran untuk Chart [cite: 125]
+      // 3. Hitung Breakdown Pengeluaran untuk Chart 
       const breakdown: { [key: string]: number } = {
           'Fixed Cost': 0,
           'Variable Cost': 0,
@@ -79,9 +79,9 @@ const ProfitLoss = () => {
 
       expenseItems.forEach(item => {
         // Asumsi category di DB cashflow menggunakan 'fixed' / 'variable'
-        if (item.category === 'fixed') { 
+        if (item.category === 'fixed' || item.category === 'Fix Cost') { 
             breakdown['Fixed Cost'] += item.amount;
-        } else if (item.category === 'variable') {
+        } else if (item.category === 'variable' || item.category === 'Variable Cost') {
             breakdown['Variable Cost'] += item.amount;
         } else {
             breakdown['Lainnya'] += item.amount; 
@@ -115,9 +115,9 @@ const ProfitLoss = () => {
   }, [profile]);
   
   // Perhitungan Laba Rugi
-  const labaKotor = totalIncome - totalExpense; // [cite: 121]
-  const taxAmount = labaKotor * taxRate;       // [cite: 121]
-  const labaBersih = labaKotor - taxAmount;     // [cite: 121]
+  const labaKotor = totalIncome - totalExpense; 
+  const taxAmount = labaKotor * taxRate;       
+  const labaBersih = labaKotor - taxAmount;     
   
   // Data Chart Laba Rugi Sederhana (Bar Chart untuk perbandingan)
   const financialSummaryData = [
@@ -137,7 +137,7 @@ const ProfitLoss = () => {
       );
   }
 
-  // Jika tidak bisa membaca (bukan superadmin, admin, leader, viewer)
+  // Jika tidak bisa membaca (akses ditolak)
   if (!canRead) {
      return (
         <MainLayout>
@@ -222,7 +222,7 @@ const ProfitLoss = () => {
 
         {/* Charts and Tax Calculation */}
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Laba Rugi Bar Chart (Quarterly Comparison Bar Chart) [cite: 124] */}
+          {/* Laba Rugi Bar Chart (Quarterly Comparison Bar Chart) */}
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Perbandingan Posisi Keuangan</CardTitle>
@@ -252,13 +252,13 @@ const ProfitLoss = () => {
           <Card>
             <CardHeader>
               <CardTitle>Perhitungan Pajak & Laba Bersih</CardTitle>
-              <CardDescription>Asumsi Pajak Bisnis (10% dari Laba Kotor).</CardDescription>
+              <CardDescription>Asumsi Pajak Bisnis ({Math.round(taxRate * 100)}% dari Laba Kotor).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none flex items-center gap-2">
                     <Percent className="h-4 w-4 text-muted-foreground" />
-                    Tarif Pajak (Perubahan Manual) [cite: 121]
+                    Tarif Pajak (Perubahan Manual) 
                 </label>
                 <div className="flex items-center gap-2">
                    <Input
@@ -292,7 +292,7 @@ const ProfitLoss = () => {
           </Card>
         </div>
         
-        {/* Expense Breakdown (Breakdown Pengeluaran (Pie Chart)) [cite: 125] */}
+        {/* Expense Breakdown (Breakdown Pengeluaran (Bar Chart)) */}
         <Card>
            <CardHeader>
              <CardTitle>Breakdown Pengeluaran</CardTitle>

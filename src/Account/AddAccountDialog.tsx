@@ -50,7 +50,7 @@ const accountFormSchema = z.object({
   username: z.string().min(3, { message: "Username wajib diisi." }),
   email: z.string().email({ message: "Format email tidak valid." }),
   password: z.string().min(8, { message: "Password minimal 8 karakter." }),
-  phone: z.string().min(10, { message: "No. HP minimal 10 digit." }),
+  phone: z.string().min(10, { message: "No. HP minimal 10 digit." }).optional().or(z.literal('')),
   account_status: z.enum(["active", "banned_temporary", "banned_permanent"]),
   data_status: z.enum(["empty", "in_progress", "rejected", "verified"]),
   // Field non-DB, hanya untuk UI
@@ -112,7 +112,8 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
           username: values.username,
           email: values.email,
           password: values.password, 
-          phone: values.phone,
+          // Menggunakan || null agar string kosong menjadi NULL di DB
+          phone: values.phone || null, 
           account_status: values.account_status as AccountStatus,
           data_status: values.data_status as AccountDataStatus,
         });
@@ -198,9 +199,9 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>No. HP</FormLabel>
+                    <FormLabel>No. HP (Opsional)</FormLabel>
                     <FormControl>
-                      <Input type="tel" placeholder="0812..." {...field} />
+                      <Input type="tel" placeholder="0812..." {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -284,7 +285,7 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
                   <FormItem className="md:col-span-2">
                     <FormLabel>Link Profil (Opsional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://shopee.co.id/..." {...field} />
+                      <Input placeholder="https://shopee.co.id/..." {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -297,7 +298,7 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
                   <FormItem className="md:col-span-2">
                     <FormLabel>Keterangan (Opsional)</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Catatan tambahan..." {...field} />
+                      <Textarea placeholder="Catatan tambahan..." {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

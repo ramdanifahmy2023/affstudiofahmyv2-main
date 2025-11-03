@@ -93,6 +93,7 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
   // Fetch data karyawan (untuk menampilkan nama di dropdown)
   useEffect(() => {
     const fetchEmployees = async () => {
+      // PERBAIKAN: Join ke profiles untuk mendapatkan full_name
       const { data } = await supabase
         .from("employees")
         .select("id, profiles ( full_name )");
@@ -111,7 +112,8 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
     if (kpiToEdit && open) {
       form.reset({
         employee_id: kpiToEdit.employee_id, 
-        target_month: new Date(kpiToEdit.target_month),
+        // Tambahkan "T00:00:00" untuk menghindari masalah timezone
+        target_month: new Date(kpiToEdit.target_month + "T00:00:00"),
         // Konversi number ke string untuk input yang di-format
         sales_target: kpiToEdit.sales_target.toString(),
         commission_target: kpiToEdit.commission_target.toString(),
@@ -172,6 +174,7 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Karyawan</FormLabel>
+                    {/* Field ini di-disable karena kita tidak bisa mengubah karyawan target */}
                     <Select value={field.value} disabled>
                       <FormControl>
                         <SelectTrigger>
@@ -196,7 +199,11 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Bulan Target</FormLabel>
-                    <Input disabled value={field.value ? format(field.value, "MMM yyyy") : ''} />
+                    <Input 
+                      disabled 
+                      value={field.value ? format(field.value, "MMM yyyy") : ''} 
+                    />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
