@@ -10,10 +10,10 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useTheme } from "next-themes"; // <-- 1. IMPORT USE THEME
+import { useTheme } from "next-themes";
 
 // Import komponen UI
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button"; // Import sudah benar di sini
 import {
   Card,
   CardContent,
@@ -56,7 +56,15 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Loader2, CalendarIcon, LogOut, Moon, Sun, Laptop } from "lucide-react"; // <-- 2. IMPORT ICON BARU
+import {
+  Loader2,
+  CalendarIcon,
+  LogOut,
+  Moon,
+  Sun,
+  Laptop,
+  Upload,
+} from "lucide-react";
 import { Label } from "@/components/ui/label";
 
 // Skema Zod untuk validasi form profil
@@ -84,11 +92,12 @@ const passwordFormSchema = z
 type PasswordFormValues = z.infer<typeof passwordFormSchema>;
 
 const ProfilePage = () => {
-  const { user, profile, signOut } = useAuth();
-  const { theme, setTheme } = useTheme(); // <-- 3. GUNAKAN HOOK
+  const { user, profile, signOut, refetchProfile } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [isLogoutAlertOpen, setIsLogoutAlertOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Inisialisasi form dengan default value yang aman
   const profileForm = useForm<ProfileFormValues>({
@@ -116,7 +125,7 @@ const ProfilePage = () => {
         phone: profile.phone || "",
         address: profile.address || "",
         date_of_birth: profile.date_of_birth
-          ? new Date(profile.date_of_birth)
+          ? new Date(profile.date_of_birth) // Pastikan parse tanggal
           : null,
       });
     }
@@ -153,6 +162,9 @@ const ProfilePage = () => {
       } else {
         toast.success("Profil berhasil diperbarui!");
       }
+
+      // Panggil refetch untuk memperbarui data di context
+      refetchProfile();
     } catch (error: any) {
       toast.error("Gagal memperbarui profil.", {
         description: error.message,
@@ -166,7 +178,6 @@ const ProfilePage = () => {
   const onPasswordSubmit = async (values: PasswordFormValues) => {
     setLoadingPassword(true);
     try {
-      // Supabase hanya membutuhkan password baru untuk update
       const { error } = await supabase.auth.updateUser({
         password: values.new_password,
       });
@@ -183,8 +194,75 @@ const ProfilePage = () => {
   };
 
   const getAvatarFallback = (name: string) => {
-    return name.split(" ").map((n) => n[0]).join("").toUpperCase();
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
   };
+
+  // --- 4. FUNGSI HANDLE UPLOAD (DIPERBAIKI) ---
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user || !profile) {
+      toast.error("Anda harus login untuk mengupload avatar.");
+      return;
+    }
+    if (!event.target.files || event.target.files.length === 0) {
+      return;
+    }
+
+    const file = event.target.files[0];
+    const fileExt = file.name.split(".").pop();
+    // Path file sesuai RLS policy: USER_ID/avatar.extension
+    const filePath = `${user.id}/avatar.${fileExt}`;
+
+    setUploading(true);
+    toast.info("Mengunggah avatar...");
+
+    try {
+      // 1. Upload ke Storage
+      const { error: uploadError } = await supabase.storage
+        .from("avatars") // Nama bucket
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true, // Timpa jika file sudah ada
+        });
+      if (uploadError) throw uploadError;
+
+      // --- PERBAIKAN DI SINI ---
+      // 2. Dapatkan Public URL (URL Bersih)
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath); // DAPATKAN URL BERSIH DULU
+
+      if (!urlData.publicUrl) throw new Error("Gagal mendapatkan URL publik.");
+      
+      // 3. Tambahkan timestamp (cache-busting) SETELAH URL didapat
+      const timestamp = new Date().getTime();
+      const newUrl = `${urlData.publicUrl}?t=${timestamp}`;
+      // --- AKHIR PERBAIKAN ---
+
+      // 4. Update URL di tabel 'profiles'
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: newUrl }) // Simpan URL dengan timestamp
+        .eq("id", profile.id);
+      if (updateError) throw updateError;
+
+      // 5. Panggil refetchProfile() dari context
+      refetchProfile();
+      toast.success("Avatar berhasil diperbarui!");
+
+    } catch (error: any) {
+      toast.error("Upload Gagal", {
+        description: error.message || "Terjadi kesalahan.",
+      });
+    } finally {
+      setUploading(false);
+      event.target.value = ""; // Reset input file
+    }
+  };
+  // ----------------------------------------
 
   return (
     <MainLayout>
@@ -193,18 +271,46 @@ const ProfilePage = () => {
 
         <Card>
           <CardHeader className="flex flex-col md:flex-row items-center gap-6">
+            {/* Avatar tetap menggunakan data dari context */}
             <Avatar className="h-20 w-20">
               <AvatarImage src={profile?.avatar_url || ""} />
               <AvatarFallback className="text-3xl">
-                {getAvatarFallback(profile?.full_name || "U")}
+                {getAvatarFallback(profile?.full_name || "??")}
               </AvatarFallback>
             </Avatar>
+
             <div className="flex-1 text-center md:text-left">
               <CardTitle className="text-2xl">{profile?.full_name}</CardTitle>
               <CardDescription>{profile?.email}</CardDescription>
-              <Button size="sm" variant="outline" className="mt-2" disabled>
-                Upload Foto (Soon)
-              </Button>
+
+              {/* Ganti Button disabled dengan Label + Input fungsional */}
+              <div className="mt-2">
+                <Label
+                  htmlFor="avatar-upload"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "gap-2",
+                    uploading
+                      ? "cursor-not-allowed opacity-50"
+                      : "cursor-pointer"
+                  )}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {uploading ? "Mengunggah..." : "Upload Foto"}
+                </Label>
+                <Input
+                  id="avatar-upload"
+                  type="file"
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/gif"
+                  onChange={handleUpload}
+                  disabled={uploading}
+                />
+              </div>
             </div>
           </CardHeader>
         </Card>
@@ -340,7 +446,6 @@ const ProfilePage = () => {
             </Card>
           </TabsContent>
 
-          {/* ... (Tab Ganti Password) ... */}
           <TabsContent value="password">
             <Card>
               <Form {...passwordForm}>
@@ -401,7 +506,6 @@ const ProfilePage = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {/* --- 4. AKTIFKAN UI DI SINI --- */}
                 <RadioGroup
                   value={theme}
                   onValueChange={setTheme}
@@ -409,24 +513,32 @@ const ProfilePage = () => {
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="light" id="light" />
-                    <Label htmlFor="light" className="flex items-center gap-2 cursor-pointer">
+                    <Label
+                      htmlFor="light"
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
                       <Sun className="h-4 w-4" /> Terang
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="dark" id="dark" />
-                    <Label htmlFor="dark" className="flex items-center gap-2 cursor-pointer">
+                    <Label
+                      htmlFor="dark"
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
                       <Moon className="h-4 w-4" /> Gelap
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="system" id="system" />
-                    <Label htmlFor="system" className="flex items-center gap-2 cursor-pointer">
+                    <Label
+                      htmlFor="system"
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
                       <Laptop className="h-4 w-4" /> Sistem
                     </Label>
                   </div>
                 </RadioGroup>
-                {/* --- AKHIR PERUBAHAN --- */}
               </CardContent>
             </Card>
           </TabsContent>

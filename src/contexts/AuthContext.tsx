@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react"; // Tambahkan useCallback
 import { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -15,7 +15,10 @@ interface Profile {
   phone?: string;
   avatar_url?: string;
   status: string;
-  // Tambahkan group_id jika ada di profiles, atau kita ambil dari employees
+  // --- TAMBAHAN DARI KODE ANDA ---
+  address?: string | null;
+  date_of_birth?: string | null;
+  // --------------------------------
 }
 
 // Tipe data dari tabel Employees
@@ -29,10 +32,11 @@ interface Employee {
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
-  employee: Employee | null; // <-- TAMBAHAN
+  employee: Employee | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refetchProfile: () => void; // <-- 1. TAMBAHAN FUNGSI BARU
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,49 +44,49 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [employee, setEmployee] = useState<Employee | null>(null); // <-- TAMBAHAN
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Fungsi untuk fetch data user (profile & employee)
-    const fetchUserData = async (userId: string) => {
-      setLoading(true);
-      try {
-        // 1. Ambil data profile
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
+  // --- 2. UBAH FUNGSI INI DENGAN useCallback ---
+  const fetchUserData = useCallback(async (userId: string) => {
+    setLoading(true);
+    try {
+      // 1. Ambil data profile
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+      if (profileError) throw profileError;
+      setProfile(profileData);
+
+      // 2. Jika profile ada, ambil data employee
+      if (profileData) {
+        const { data: employeeData, error: employeeError } = await supabase
+          .from("employees")
           .select("*")
-          .eq("user_id", userId)
+          .eq("profile_id", profileData.id) // Link via profile.id
           .single();
 
-        if (profileError) throw profileError;
-        setProfile(profileData);
-
-        // 2. Jika profile ada, ambil data employee
-        if (profileData) {
-          const { data: employeeData, error: employeeError } = await supabase
-            .from("employees")
-            .select("*")
-            .eq("profile_id", profileData.id) // Link via profile.id
-            .single();
-
-          if (employeeError) {
-            console.warn("User profile found, but no employee record linked.");
-            setEmployee(null);
-          } else {
-            setEmployee(employeeData); // <-- SET EMPLOYEE
-          }
+        if (employeeError) {
+          console.warn("User profile found, but no employee record linked.");
+          setEmployee(null);
+        } else {
+          setEmployee(employeeData);
         }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        setProfile(null);
-        setEmployee(null);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      setProfile(null);
+      setEmployee(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []); // <-- Tambahkan dependency array kosong
 
+  useEffect(() => {
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -102,14 +106,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         fetchUserData(session.user.id);
       } else {
         setProfile(null);
-        setEmployee(null); // <-- TAMBAHAN
+        setEmployee(null);
         setLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
+  }, [fetchUserData]); // <-- 3. TAMBAHKAN fetchUserData SEBAGAI DEPENDENCY
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -117,19 +120,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       password,
     });
     if (error) throw error;
-    // navigate("/dashboard"); // Dihapus agar navigasi ditangani di Login.tsx
   };
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     setProfile(null);
-    setEmployee(null); // <-- TAMBAHAN
+    setEmployee(null);
     if (error) throw error;
     navigate("/");
   };
 
+  // --- 4. BUAT FUNGSI REFETCH ---
+  const refetchProfile = useCallback(() => {
+    if (user) {
+      console.log("Refetching profile data...");
+      fetchUserData(user.id);
+    }
+  }, [user, fetchUserData]);
+  // ------------------------------
+
   return (
-    <AuthContext.Provider value={{ user, profile, employee, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        employee,
+        loading,
+        signIn,
+        signOut,
+        refetchProfile, // <-- 5. EKSPOS FUNGSI REFETCH
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

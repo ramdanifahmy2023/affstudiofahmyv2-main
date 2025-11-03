@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTheme } from "next-themes";
-import { Moon, Sun, Laptop, Bell } from "lucide-react";
+import { Moon, Sun, Laptop, Bell } from "lucide-react"; // <-- 2. TAMBAHKAN IKON 'Bell'
 
 // Komponen Toggle Tema
 const ModeToggle = () => {
@@ -58,7 +58,7 @@ const ModeToggle = () => {
   );
 };
 
-// Komponen Notifikasi
+// --- 3. TAMBAHKAN KOMPONEN NOTIFIKASI BARU ---
 const NotificationBell = () => {
   // Data tiruan (fake data) sesuai permintaan blueprint
   const fakeNotifications = [
@@ -123,6 +123,8 @@ const NotificationBell = () => {
     </DropdownMenu>
   );
 };
+// --- AKHIR KOMPONEN NOTIFIKASI ---
+
 
 // Komponen UserNav (Menu Avatar)
 const UserNav = () => {
@@ -199,7 +201,9 @@ export const Header = () => {
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-end border-b bg-background px-8">
       <div className="flex items-center gap-1">
+        {/* --- 4. TAMBAHKAN KOMPONEN DI SINI --- */}
         <NotificationBell />
+        {/* ---------------------------------- */}
         <ModeToggle />
         <UserNav />
       </div>
