@@ -38,21 +38,21 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   // RESTRICTED PAGES (Hanya untuk Management, Admin, Viewer)
-  { title: "Performance", href: "/performance", icon: TrendingUp, roles: MANAGEMENT_ROLES },
-  { title: "Commissions", href: "/commissions", icon: DollarSign, roles: MANAGEMENT_ROLES }, 
+  { title: "Performa", href: "/performance", icon: TrendingUp, roles: MANAGEMENT_ROLES },
+  { title: "Laporan Komisi", href: "/commissions", icon: DollarSign, roles: MANAGEMENT_ROLES }, 
   { title: "Cashflow", href: "/cashflow", icon: Wallet, roles: MANAGEMENT_ROLES },
   { title: "Assets", href: "/assets", icon: FileSpreadsheet, roles: MANAGEMENT_ROLES },
-  { title: "Debt & Receivable", href: "/debt-receivable", icon: Scale, roles: MANAGEMENT_ROLES }, 
+  { title: "Hutang & Piutang", href: "/debt-receivable", icon: Scale, roles: MANAGEMENT_ROLES }, 
   { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp, roles: MANAGEMENT_ROLES }, 
   { title: "KPI Targets", href: "/kpi", icon: Target, roles: MANAGEMENT_ROLES },
-  { title: "Employees", href: "/employees", icon: Users, roles: MANAGEMENT_ROLES },
+  { title: "Manage Karyawan", href: "/employees", icon: Users, roles: MANAGEMENT_ROLES },
   { title: "Devices", href: "/devices", icon: Smartphone, roles: MANAGEMENT_ROLES },
-  { title: "Accounts", href: "/accounts", icon: UserCircle, roles: MANAGEMENT_ROLES },
-  { title: "Groups", href: "/groups", icon: Package, roles: MANAGEMENT_ROLES },
+  { title: "Akun Affiliate", href: "/accounts", icon: UserCircle, roles: MANAGEMENT_ROLES },
+  { title: "Manage Groups", href: "/groups", icon: Package, roles: MANAGEMENT_ROLES },
 
   // STAFF PAGES
   { title: "Daily Report", href: "/daily-report", icon: FileText, roles: ["staff"] },
-  { title: "Attendance", href: "/attendance", icon: UserCircle, roles: ALL_ROLES }, 
+  { title: "Absensi", href: "/attendance", icon: UserCircle, roles: ALL_ROLES }, 
   { title: "SOP & Knowledge", href: "/knowledge", icon: BookOpen, roles: ALL_ROLES },
 ];
 
