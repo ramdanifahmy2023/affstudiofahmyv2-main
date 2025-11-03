@@ -41,6 +41,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
+
 
 // Skema Zod (disamakan dengan komisi, validasi string)
 const transactionFormSchema = z.object({
@@ -53,7 +56,7 @@ const transactionFormSchema = z.object({
   category: z.string().min(1, { message: "Kategori wajib diisi." }),
   amount: z.string() // Validasi string saja, kita parse saat submit
     .min(1, { message: "Nominal wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(val.replace(/[^0-9]/g, ""))), { message: "Harus berupa angka." }),
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Harus berupa angka." }),
   description: z.string().min(1, { message: "Deskripsi wajib diisi." }),
   group_id: z.string().uuid().optional().nullable(),
   proof_url: z.string().url({ message: "URL tidak valid" }).optional().or(z.literal('')),
@@ -69,6 +72,8 @@ interface AddTransactionDialogProps {
   onSuccess: () => void;
 }
 
+// --- 2. HAPUS HELPER LOKAL ---
+
 export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTransactionDialogProps) => {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -81,11 +86,9 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
       transaction_date: new Date(),
       type: undefined,
       category: "",
-      // --- PERBAIKAN DI SINI ---
-      amount: "0", // Ubah dari "" menjadi "0"
-      // --- AKHIR PERBAIKAN ---
+      amount: "0", 
       description: "",
-      group_id: null,
+      group_id: "no-group", // Default "no-group"
       proof_url: "",
     },
   });
@@ -115,10 +118,13 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
     
     setLoading(true);
     try {
-      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      // --- 3. GUNAKAN HELPER BARU (string -> number) ---
+      const finalAmount = parseCurrencyInput(values.amount);
       if (isNaN(finalAmount)) {
         throw new Error("Nominal tidak valid.");
       }
+      
+      const finalGroupId = values.group_id === "no-group" ? null : values.group_id;
       
       const { error } = await supabase
         .from("cashflow")
@@ -129,7 +135,7 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
           amount: finalAmount, // Kirim sebagai number
           description: values.description,
           proof_url: values.proof_url || null,
-          group_id: values.group_id || null,
+          group_id: finalGroupId,
           created_by: profile.id,
         });
 
@@ -145,20 +151,6 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
       setLoading(false);
     }
   };
-
-  // --- PERBAIKAN HELPER (Seperti di Komisi) ---
-  const formatCurrencyInput = (value: string | number) => {
-     if (typeof value === 'number') value = value.toString();
-     if (!value) return "";
-     const num = value.replace(/[^0-9]/g, "");
-     if (num === "0") return "0";
-     return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-  };
-  
-  const parseCurrencyInput = (value: string) => {
-     return value.replace(/[^0-9]/g, "");
-  };
-  // --- AKHIR PERBAIKAN HELPER ---
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -232,13 +224,12 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
                   <FormItem>
                     <FormLabel>Nominal</FormLabel>
                     <FormControl>
-                      {/* --- INPUT DIPERBARUI --- */}
+                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input 
                         placeholder="Rp 0" 
                         value={formatCurrencyInput(field.value)}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        onChange={e => field.onChange(e.target.value)}
                       />
-                      {/* --- AKHIR PERBARUAN --- */}
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -272,16 +263,14 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Group (Opsional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <Select onValueChange={field.onChange} value={field.value ?? "no-group"}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Pilih Group" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {/* --- PERBAIKAN BUG SelectItem --- */}
                         <SelectItem value="no-group">Tidak ada group</SelectItem>
-                        {/* --- AKHIR PERBAIKAN --- */}
                         {groups.map((g) => (
                           <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                         ))}

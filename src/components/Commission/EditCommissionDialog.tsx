@@ -39,23 +39,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommissionData } from "@/pages/Commissions";
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 
 // Skema Zod
 const periods = ["M1", "M2", "M3", "M4", "M5"] as const;
 
-// === HELPER UNTUK FORMAT/PARSE (Konsistensi dengan form lain) ===
-const formatCurrencyInput = (value: string | number) => {
-   if (typeof value === 'number') value = value.toString();
-   if (!value) return "";
-   const num = value.replace(/[^0-9]/g, "");
-   if (num === "0") return "0";
-   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-};
-
-const parseCurrencyInput = (value: string) => {
-   return parseFloat(value.replace(/[^0-9]/g, "")) || 0;
-};
-// ===============================================================
+// --- 2. HAPUS HELPER LOKAL ---
 
 // Skema validasi Zod
 const commissionFormSchema = z.object({
@@ -63,15 +53,16 @@ const commissionFormSchema = z.object({
   year: z.string().length(4),
   month: z.string(),
   period: z.enum(periods),
+  // --- 3. UBAH ZOD KE STRING & TAMBAH VALIDASI ANGKA ---
   gross_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Harus berupa angka." }),
   net_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Harus berupa angka." }),
   paid_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Harus berupa angka." }),
   payment_date: z.date().optional().nullable(),
 });
 
@@ -191,7 +182,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
     
     setLoading(true);
     
-    // Konversi string input mata uang ke number
+    // --- 4. GUNAKAN HELPER BARU (string -> number) ---
     const finalGrossCommission = parseCurrencyInput(values.gross_commission);
     const finalNetCommission = parseCurrencyInput(values.net_commission);
     const finalPaidCommission = parseCurrencyInput(values.paid_commission);
@@ -204,9 +195,9 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
           period: values.period,
           period_start: format(periodDates.start, "yyyy-MM-dd"),
           period_end: format(periodDates.end, "yyyy-MM-dd"),
-          gross_commission: finalGrossCommission,
-          net_commission: finalNetCommission,
-          paid_commission: finalPaidCommission,
+          gross_commission: finalGrossCommission, // Kirim number
+          net_commission: finalNetCommission, // Kirim number
+          paid_commission: finalPaidCommission, // Kirim number
           payment_date: values.payment_date ? format(values.payment_date, "yyyy-MM-dd") : null,
         })
         .eq("id", commission.id);
@@ -323,7 +314,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
               </div>
             )}
             
-            {/* Field Nominal (Kotor, Bersih, Cair) */}
+            {/* --- 5. GUNAKAN HELPER BARU DI INPUT --- */}
             <div className="grid grid-cols-3 gap-4">
               <FormField
                 control={form.control}
@@ -334,8 +325,8 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        value={formatCurrencyInput(field.value)}
+                        onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -351,8 +342,8 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        value={formatCurrencyInput(field.value)}
+                        onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -368,8 +359,8 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        value={formatCurrencyInput(field.value)}
+                        onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />

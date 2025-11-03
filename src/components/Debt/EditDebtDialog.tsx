@@ -39,6 +39,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DebtData } from "@/pages/DebtReceivable"; // Import tipe data
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 
 // Tipe data untuk dropdown Group
 interface Group {
@@ -46,19 +48,7 @@ interface Group {
   name: string;
 }
 
-// === HELPER UNTUK FORMAT/PARSE (Konsistensi) ===
-const formatCurrencyInput = (value: string | number) => {
-   if (typeof value === 'number') value = value.toString();
-   if (!value) return "";
-   const num = value.replace(/[^0-9]/g, "");
-   if (num === "0") return "0";
-   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-};
-
-const parseCurrencyInput = (value: string) => {
-   return value.replace(/[^0-9]/g, "");
-};
-// ============================================================================
+// --- 2. HAPUS HELPER LOKAL ---
 
 
 // Skema validasi Zod (diperbarui untuk menggunakan string input)
@@ -68,7 +58,7 @@ const debtFormSchema = z.object({
   counterparty: z.string().min(3, { message: "Nama pihak wajib diisi." }),
   amount: z.string() 
     .min(1, { message: "Nominal wajib diisi." })
-    .refine((val) => parseFloat(val.replace(/[^0-9]/g, "")) > 0, { message: "Nominal harus lebih dari 0." }),
+    .refine((val) => parseCurrencyInput(val) > 0, { message: "Nominal harus lebih dari 0." }),
   due_date: z.date().optional().nullable(),
   status: z.enum(["Belum Lunas", "Cicilan", "Lunas"], {
     required_error: "Status wajib dipilih.",
@@ -92,7 +82,7 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
   
   const form = useForm<DebtFormValues>({
     resolver: zodResolver(debtFormSchema),
-    defaultValues: { amount: "0", status: "Belum Lunas", description: null, group_id: null },
+    defaultValues: { amount: "0", status: "Belum Lunas", description: null, group_id: "none" },
   });
 
   // Fetch data group & isi form
@@ -104,17 +94,17 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
       });
       
       // Isi Form
-      const groupId = (debt as any).groups?.id; // Ambil group_id dari relasi jika tersedia
+      const groupId = debt.group_id || "none";
       
       form.reset({
         type: debt.type,
-        transaction_date: new Date(debt.created_at),
+        transaction_date: new Date(debt.created_at.includes('T') ? debt.created_at : `${debt.created_at}T00:00:00`),
         counterparty: debt.counterparty,
         amount: debt.amount.toString(), // Ubah number ke string
         due_date: debt.due_date ? new Date(debt.due_date + "T00:00:00") : null,
         status: debt.status as any,
         description: debt.description,
-        group_id: groupId || 'no-group',
+        group_id: groupId,
       });
     }
   }, [open, debt, form]);
@@ -123,13 +113,12 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
     if (!debt) return;
     setLoading(true);
     try {
-      const finalGroupId = values.group_id === "no-group" ? null : values.group_id;
-      // Parse amount string menjadi number di sini
-      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      // --- 3. GUNAKAN HELPER BARU (string -> number) ---
+      const finalGroupId = values.group_id === "none" ? null : values.group_id;
+      const finalAmount = parseCurrencyInput(values.amount);
       if (isNaN(finalAmount) || finalAmount <= 0) {
         throw new Error("Nominal tidak valid atau kosong.");
       }
-
 
       const { error } = await supabase
         .from("debt_receivable")
@@ -263,9 +252,10 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
                   <FormItem>
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
+                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input type="text" placeholder="1000000"
-                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
-                       onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                       value={formatCurrencyInput(field.value)}
+                       onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -304,14 +294,14 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Terkait Grup (Opsional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? "no-group"}>
+                      <Select onValueChange={field.onChange} value={field.value ?? "none"}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Pilih grup terkait..." />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="no-group">-- Tidak ada group --</SelectItem>
+                          <SelectItem value="none">-- Tidak ada group --</SelectItem>
                           {groups.map((group) => (
                             <SelectItem key={group.id} value={group.id}>
                               {group.name}

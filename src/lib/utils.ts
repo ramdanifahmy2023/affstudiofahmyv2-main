@@ -1,3 +1,5 @@
+// src/lib/utils.ts
+
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -14,6 +16,32 @@ export function formatCurrency(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount)
 }
+
+// --- HELPER BARU UNTUK INPUT FORM ---
+
+/**
+ * Mengubah angka atau string angka menjadi format ribuan (string).
+ * Contoh: 1000000 -> "1.000.000"
+ * Contoh: "1000000" -> "1.000.000"
+ */
+export function formatCurrencyInput(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) value = "0";
+  const numString = String(value).replace(/[^0-9]/g, "");
+  if (numString === "" || numString === "0") return "0";
+  const num = parseInt(numString, 10);
+  return new Intl.NumberFormat("id-ID").format(num);
+}
+
+/**
+ * Mengubah string format ribuan kembali menjadi angka (number).
+ * Contoh: "1.000.000" -> 1000000
+ */
+export function parseCurrencyInput(value: string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  return parseFloat(String(value).replace(/[^0-9]/g, "")) || 0;
+}
+// --- AKHIR HELPER BARU ---
+
 
 export function formatNumber(num: number): string {
   // Dipakai oleh DashboardStats.tsx

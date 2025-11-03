@@ -16,7 +16,7 @@ const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, isLoading, user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // <-- 1. Panggil hook navigasi
 
   // Redirect ke dashboard setelah login berhasil
   if (!isLoading && user) {
@@ -38,17 +38,17 @@ const LoginPage: React.FC = () => {
     }
 
     try {
-        // PERBAIKAN KRITIS: Tidak lagi menggunakan destructuring,
-        // cukup panggil signIn. Jika gagal, error akan ditangkap di block catch.
         await signIn(email, password);
         
-        // Hanya jika berhasil:
         toast({
             title: "Login Berhasil 🎉",
             description: "Anda berhasil masuk ke FAHMYID Digital Marketing System.",
             duration: 2000,
         });
-        // Navigasi akan dihandle oleh Navigate di luar fungsi ini setelah state user terupdate
+        
+        // --- 2. PERBAIKAN DI SINI: Arahkan ke dashboard ---
+        navigate("/dashboard");
+        // ------------------------------------------
     
     } catch (error: any) {
         let errorMessage = "Terjadi kesalahan saat login. Silakan coba lagi.";

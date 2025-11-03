@@ -42,6 +42,8 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { TransactionData } from "@/pages/Cashflow";
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 
 // Skema Zod (disamakan dengan komisi, validasi string)
 const transactionFormSchema = z.object({
@@ -54,7 +56,7 @@ const transactionFormSchema = z.object({
   category: z.string().min(1, { message: "Kategori wajib diisi." }),
   amount: z.string()
     .min(1, { message: "Nominal wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(val.replace(/[^0-9]/g, ""))), { message: "Harus berupa angka." }),
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Harus berupa angka." }),
   description: z.string().min(1, { message: "Deskripsi wajib diisi." }),
   group_id: z.string().uuid().optional().nullable(),
   proof_url: z.string().url({ message: "URL tidak valid" }).optional().or(z.literal('')),
@@ -71,19 +73,7 @@ interface EditTransactionDialogProps {
   transaction: TransactionData | null;
 }
 
-// === HELPER UNTUK FORMAT/PARSE ===
-const formatCurrencyInput = (value: string | number) => {
-   if (typeof value === 'number') value = value.toString();
-   if (!value) return "";
-   const num = value.replace(/[^0-9]/g, "");
-   if (num === "0") return "0";
-   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-};
-  
-const parseCurrencyInput = (value: string) => {
-   return value.replace(/[^0-9]/g, "");
-};
-// ===================================
+// --- 2. HAPUS HELPER LOKAL ---
 
 export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transaction }: EditTransactionDialogProps) => {
   const { profile } = useAuth();
@@ -99,7 +89,7 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
       category: "",
       amount: "0",
       description: "",
-      group_id: null,
+      group_id: "no-group",
       proof_url: "",
     },
   });
@@ -126,7 +116,7 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
     if (transactionType && !categories.includes(form.getValues("category"))) {
         form.setValue("category", "");
     }
-  }, [transactionType, form]);
+  }, [transactionType, form, categories]); // Tambahkan 'categories' di dependency
   
   // Isi form saat dialog dibuka
   useEffect(() => {
@@ -149,10 +139,13 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
     
     setLoading(true);
     try {
-      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      // --- 3. GUNAKAN HELPER BARU (string -> number) ---
+      const finalAmount = parseCurrencyInput(values.amount);
       if (isNaN(finalAmount)) {
         throw new Error("Nominal tidak valid.");
       }
+
+      const finalGroupId = values.group_id === "no-group" ? null : values.group_id;
 
       const { error } = await supabase
         .from("cashflow")
@@ -163,8 +156,8 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
           amount: finalAmount, // Kirim sebagai number
           description: values.description,
           proof_url: values.proof_url || null,
-          group_id: values.group_id === "no-group" ? null : (values.group_id || null),
-          created_by: profile.id,
+          group_id: finalGroupId,
+          created_by: profile.id, // Sebaiknya created_by tidak diubah, tapi kita ikuti form
         })
         .eq("id", transaction.id);
 
@@ -253,10 +246,11 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
                   <FormItem>
                     <FormLabel>Nominal</FormLabel>
                     <FormControl>
+                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input 
                         placeholder="Rp 0" 
                         value={formatCurrencyInput(field.value)}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />

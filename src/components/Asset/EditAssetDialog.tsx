@@ -38,8 +38,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
-// PERBAIKAN KRITIS: Import formatCurrency ditambahkan
-import { cn, formatCurrency } from "@/lib/utils"; 
+// --- 1. IMPORT HELPER BARU (termasuk formatCurrency untuk total) ---
+import { cn, formatCurrency, formatCurrencyInput, parseCurrencyInput } from "@/lib/utils"; 
 import { AssetData } from "@/pages/Asset"; // Import tipe data AssetData
 
 // Tipe data untuk dropdown Karyawan
@@ -48,19 +48,17 @@ interface Employee {
   full_name: string;
 }
 
-// Skema validasi Zod (mirip AddAssetDialog)
+// Skema validasi Zod
 const assetFormSchema = z.object({
   purchase_date: z.date({ required_error: "Tanggal pembelian wajib diisi." }),
   name: z.string().min(3, { message: "Nama aset wajib diisi (min. 3 karakter)." }),
   category: z.enum(["Elektronik", "Furniture", "Kendaraan", "Lainnya"], {
     required_error: "Kategori wajib dipilih.",
   }),
-  // purchase_price di sini adalah HARGA SATUAN (untuk UI)
-  purchase_price: z.preprocess( 
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(1, { message: "Harga satuan wajib diisi." })
-  ),
-  // Quantity (QTY)
+  // --- 2. UBAH ZOD KE STRING & TAMBAH VALIDASI ANGKA ---
+  purchase_price: z.string() // Ini adalah Harga Satuan
+    .min(1, { message: "Harga satuan wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) > 0, { message: "Harga harus lebih dari 0." }),
   quantity: z.preprocess( 
     (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
     z.number().min(1, { message: "Jumlah (Qty) wajib diisi (min. 1)." })
@@ -90,24 +88,15 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
       purchase_date: new Date(),
       name: "",
       category: undefined,
-      purchase_price: 0,
+      purchase_price: "0",
       quantity: 1,
       condition: "Baru",
-      assigned_to: null,
+      assigned_to: "none",
       notes: "",
     },
   });
   
-  // Helper format mata uang input
-  const formatCurrencyInput = (value: string | number) => {
-    const numberValue = Number(String(value).replace(/[^0-9]/g, ""));
-    if (isNaN(numberValue)) return "0";
-    return new Intl.NumberFormat("id-ID").format(numberValue);
-  };
-  
-  const parseCurrencyInput = (value: string) => {
-     return Number(String(value).replace(/[^0-9]/g, ""));
-  };
+  // --- 3. HAPUS HELPER LOKAL ---
   
   // Mengisi form saat data aset tersedia
   useEffect(() => {
@@ -115,13 +104,13 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
       const unitPrice = asset.purchase_price || 0; 
       
       form.reset({
-        purchase_date: new Date(asset.purchase_date),
+        purchase_date: new Date(asset.purchase_date.includes('T') ? asset.purchase_date : `${asset.purchase_date}T00:00:00`),
         name: asset.name,
         category: asset.category as AssetFormValues["category"],
-        purchase_price: unitPrice, 
-        quantity: 1, 
+        purchase_price: unitPrice.toString(), // number ke string
+        quantity: 1, // Asumsi Qty 1 saat edit, karena DB tidak menyimpan Qty
         condition: asset.condition as AssetFormValues["condition"] || "Baru",
-        assigned_to: asset.assigned_to || null,
+        assigned_to: asset.assigned_to || "none",
         notes: asset.notes || "",
       });
     }
@@ -168,8 +157,11 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
     if (!asset) return;
     setLoading(true);
     try {
-      // Perhitungan Harga Total: Harga Satuan * Qty
-      const totalPrice = values.purchase_price * values.quantity;
+      // --- 4. GUNAKAN HELPER BARU (string -> number) ---
+      const finalPrice = parseCurrencyInput(values.purchase_price);
+      const totalPrice = finalPrice * values.quantity;
+      const finalAssignedTo = values.assigned_to === "none" ? null : values.assigned_to;
+
 
       const { error } = await supabase
         .from("assets")
@@ -180,7 +172,7 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
           purchase_price: totalPrice,
           current_value: totalPrice, // Asumsi nilai aset sama dengan harga beli saat di-update
           condition: values.condition,
-          assigned_to: values.assigned_to === "none" ? null : values.assigned_to,
+          assigned_to: finalAssignedTo,
           notes: values.notes,
         })
         .eq("id", asset.id);
@@ -207,8 +199,9 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
   
   // Watch Qty dan Price untuk kalkulasi dinamis
   const watchQty = form.watch("quantity", 1);
-  const watchPrice = form.watch("purchase_price", 0);
-  const estimatedTotal = watchPrice * watchQty;
+  const watchPrice = form.watch("purchase_price", "0");
+  // --- 5. GUNAKAN HELPER BARU (string -> number) ---
+  const estimatedTotal = parseCurrencyInput(watchPrice) * watchQty;
 
 
   return (
@@ -293,11 +286,10 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
                   <FormItem>
                     <FormLabel>Harga Satuan (Rp)</FormLabel>
                     <FormControl>
+                      {/* --- 6. GUNAKAN HELPER BARU --- */}
                       <Input type="text" placeholder="5.000.000"
-                       value={formatCurrencyInput(field.value || 0)}
-                       onChange={(e) => {
-                         field.onChange(parseCurrencyInput(e.target.value));
-                       }}
+                       value={formatCurrencyInput(field.value)}
+                       onChange={(e) => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />

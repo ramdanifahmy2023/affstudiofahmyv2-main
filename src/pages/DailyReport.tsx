@@ -294,13 +294,25 @@ const DailyReport = () => {
 
       if (deviceError) throw deviceError;
 
-      // Logika Absen Keluar (Diasumsikan ditangani Trigger DB)
-      // Jika Absensi harus diupdate terpisah, tambahkan:
-      await supabase.from('attendance')
-         .update({ check_out: new Date().toISOString() })
-         .eq('employee_id', employee.id)
-         .eq('attendance_date', formattedDate)
-         .is('check_out', null); // Hanya update jika check_out belum ada
+      // --- PERBAIKAN LOGIKA ABSENSI ---
+      // Gunakan UPSERT untuk mencatat check_out.
+      // Ini akan meng-update jika (employee_id, attendance_date) sudah ada (dari check_in),
+      // atau membuat data baru jika staf lupa check_in.
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .upsert(
+          {
+            employee_id: employee.id,
+            attendance_date: formattedDate,
+            check_out: new Date().toISOString(),
+            status: 'present', // Set status 'present' jika ini adalah data baru
+          },
+          {
+            onConflict: 'employee_id, attendance_date',
+          }
+        );
+      if (attendanceError) throw attendanceError;
+      // --- AKHIR PERBAIKAN ---
 
       toast.success("Laporan harian berhasil dikirim!");
       toast.info("Absen keluar Anda telah otomatis tercatat.");

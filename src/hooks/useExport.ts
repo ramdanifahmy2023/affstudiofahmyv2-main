@@ -12,9 +12,21 @@ declare module 'jspdf' {
   }
 }
 
-interface ExportOptions {
-// ...
+// --- PERBAIKAN DI SINI ---
+// Definisikan tipe data untuk kolom dan data
+interface ExportColumn {
+  header: string;
+  dataKey: string;
 }
+
+// Definisikan interface ExportOptions
+interface ExportOptions {
+  filename: string;
+  title: string;
+  data: any[];
+  columns: ExportColumn[];
+}
+// --- AKHIR PERBAIKAN ---
 
 export const useExport = () => {
   const [isExporting, setIsExporting] = useState(false);

@@ -1,14 +1,13 @@
 // src/components/Asset/AddAssetDialog.tsx
-// KODE LENGKAP & DIPERBARUI
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast"; // <-- PERBAIKAN: Import useToast
+import { useToast } from "@/components/ui/use-toast"; 
 import { format } from "date-fns";
-import { id as indonesianLocale } from "date-fns/locale"; // Untuk format tanggal Bhs. Indonesia
+import { id as indonesianLocale } from "date-fns/locale"; 
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +39,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 
 // Tipe data untuk dropdown Karyawan
 interface Employee {
@@ -47,26 +48,24 @@ interface Employee {
   full_name: string;
 }
 
-// Skema validasi Zod berdasarkan blueprint 
-// (Blueprint punya Qty & Harga, Skema DB punya purchase_price (total))
+// Skema validasi Zod
 const assetFormSchema = z.object({
   purchase_date: z.date({ required_error: "Tanggal pembelian wajib diisi." }),
   name: z.string().min(3, { message: "Nama aset wajib diisi (min. 3 karakter)." }),
   category: z.enum(["Elektronik", "Furniture", "Kendaraan", "Lainnya"], {
     required_error: "Kategori wajib dipilih.",
   }),
-  purchase_price: z.preprocess( // Ini adalah Harga Satuan
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(1, { message: "Harga satuan wajib diisi." })
-  ),
-  quantity: z.preprocess(
+  // --- 2. UBAH ZOD KE STRING & TAMBAH VALIDASI ANGKA ---
+  purchase_price: z.string() // Ini adalah Harga Satuan
+    .min(1, { message: "Harga satuan wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) > 0, { message: "Harga harus lebih dari 0." }),
+  quantity: z.preprocess( 
     (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
     z.number().min(1, { message: "Jumlah (Qty) wajib diisi (min. 1)." })
   ),
   condition: z.enum(["Baru", "Bekas"], { required_error: "Kondisi wajib dipilih." }),
   assigned_to: z.string().uuid().optional().nullable(), // employee_id (dari tabel employees)
   notes: z.string().optional().nullable(),
-  // Foto (file upload) akan ditangani terpisah
 });
 
 type AssetFormValues = z.infer<typeof assetFormSchema>;
@@ -80,7 +79,7 @@ interface AddAssetDialogProps {
 export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const { toast } = useToast(); // <-- PERBAIKAN: Panggil hook useToast
+  const { toast } = useToast(); 
 
   const form = useForm<AssetFormValues>({
     resolver: zodResolver(assetFormSchema),
@@ -88,25 +87,15 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
       purchase_date: new Date(),
       name: "",
       category: undefined,
-      purchase_price: 0,
+      purchase_price: "0",
       quantity: 1,
       condition: "Baru",
-      assigned_to: null,
+      assigned_to: "none", // Default ke "none"
       notes: "",
     },
   });
   
-  // Helper format mata uang
-  const formatCurrencyInput = (value: string | number) => {
-    const numberValue = Number(String(value).replace(/[^0-9]/g, ""));
-    if (isNaN(numberValue)) return "0";
-    return new Intl.NumberFormat("id-ID").format(numberValue);
-  };
-  
-  const parseCurrencyInput = (value: string) => {
-     return Number(String(value).replace(/[^0-9]/g, ""));
-  };
-
+  // --- 3. HAPUS HELPER LOKAL ---
 
   // Fetch data karyawan untuk dropdown "Assigned To"
   useEffect(() => {
@@ -116,10 +105,10 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
         purchase_date: new Date(),
         name: "",
         category: undefined,
-        purchase_price: 0,
+        purchase_price: "0",
         quantity: 1,
         condition: "Baru",
-        assigned_to: null,
+        assigned_to: "none",
         notes: "",
       });
 
@@ -145,7 +134,6 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
           setEmployees(mappedData || []);
 
         } catch (error: any) {
-          // <-- PERBAIKAN: Gunakan toast dari useToast
           toast({
             variant: "destructive",
             title: "Gagal Memuat Karyawan",
@@ -157,14 +145,15 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
       
       fetchEmployees();
     }
-  }, [open, form, toast]); // Tambahkan toast dan form ke dependency array
+  }, [open, form, toast]); 
 
   const onSubmit = async (values: AssetFormValues) => {
     setLoading(true);
     try {
-      // Skema DB tidak punya 'quantity', tapi punya 'purchase_price'
-      // Sesuai blueprint, kita kalikan Qty * Harga Satuan
-      const totalPrice = values.purchase_price * values.quantity;
+      // --- 4. GUNAKAN HELPER BARU (string -> number) ---
+      const finalPrice = parseCurrencyInput(values.purchase_price);
+      const totalPrice = finalPrice * values.quantity;
+      const finalAssignedTo = values.assigned_to === "none" ? null : values.assigned_to;
 
       const { error } = await supabase
         .from("assets")
@@ -175,14 +164,12 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
           purchase_price: totalPrice, // Total Harga (Harga Satuan * Qty)
           current_value: totalPrice, // Nilai saat ini = harga beli
           condition: values.condition,
-          assigned_to: values.assigned_to,
+          assigned_to: finalAssignedTo,
           notes: values.notes,
-          // 'location' dan 'foto' belum ada di form
         });
 
       if (error) throw error;
 
-      // <-- PERBAIKAN: Gunakan toast dari useToast
       toast({
         title: "Aset Berhasil Ditambahkan",
         description: `Aset "${values.name}" telah tersimpan.`,
@@ -191,7 +178,6 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
       
     } catch (error: any) {
       console.error(error);
-      // <-- PERBAIKAN: Gunakan toast dari useToast
       toast({
         variant: "destructive",
         title: "Gagal Menyimpan Aset",
@@ -284,11 +270,10 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                   <FormItem>
                     <FormLabel>Harga Satuan (Rp)</FormLabel>
                     <FormControl>
+                      {/* --- 5. GUNAKAN HELPER BARU --- */}
                       <Input type="text" placeholder="5.000.000"
-                       value={formatCurrencyInput(field.value || 0)}
-                       onChange={(e) => {
-                         field.onChange(parseCurrencyInput(e.target.value));
-                       }}
+                       value={formatCurrencyInput(field.value)}
+                       onChange={(e) => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -338,7 +323,7 @@ export const AddAssetDialog = ({ open, onOpenChange, onSuccess }: AddAssetDialog
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Diberikan ke (Opsional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                      <Select onValueChange={field.onChange} value={field.value ?? "none"}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Pilih karyawan..." />

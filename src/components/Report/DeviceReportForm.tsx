@@ -16,7 +16,8 @@ import { Trash2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client"; 
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { formatCurrency, formatNumber } from "@/lib/utils"; // Import helper dari utils
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 
 // Tipe data untuk laporan per device
 export interface DeviceReport {
@@ -40,17 +41,7 @@ interface DeviceReportFormProps {
   accounts: { id: string; name: string }[];
 }
 
-// Helper untuk parse input mata uang
-const parseCurrency = (value: string) => {
-    // Menghapus semua karakter non-digit (termasuk koma/titik pemisah ribuan)
-    return Number(value.replace(/[^0-9]/g, "")) || 0;
-};
-  
-// Helper untuk format input mata uang (menggunakan formatNumber dari utils)
-const formatCurrencyInput = (value: number) => {
-    // Hanya menggunakan formatNumber dari utils, karena tidak perlu simbol 'Rp'
-    return formatNumber(value); 
-};
+// --- 2. HAPUS HELPER LOKAL (parseCurrency & formatCurrencyInput) ---
 
 
 export const DeviceReportForm = ({
@@ -242,6 +233,7 @@ export const DeviceReportForm = ({
               <Input
                 id={`opening-${report.id}`}
                 placeholder="0"
+                // --- 3. GUNAKAN HELPER BARU ---
                 value={formatCurrencyInput(report.openingBalance)}
                 disabled={openingBalanceDisabled}
                 readOnly={openingBalanceDisabled}
@@ -250,7 +242,7 @@ export const DeviceReportForm = ({
                   onUpdate(
                     report.id,
                     "openingBalance",
-                    parseCurrency(e.target.value)
+                    parseCurrencyInput(e.target.value) // Helper baru return number
                   )
                 }
               />
@@ -266,12 +258,13 @@ export const DeviceReportForm = ({
               <Input
                 id={`closing-${report.id}`}
                 placeholder="0"
+                // --- 4. GUNAKAN HELPER BARU ---
                 value={formatCurrencyInput(report.closingBalance)}
                 onChange={(e) =>
                   onUpdate(
                     report.id,
                     "closingBalance",
-                    parseCurrency(e.target.value)
+                    parseCurrencyInput(e.target.value) // Helper baru return number
                   )
                 }
               />

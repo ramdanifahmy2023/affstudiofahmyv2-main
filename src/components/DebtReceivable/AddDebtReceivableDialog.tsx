@@ -38,6 +38,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+// --- 1. IMPORT HELPER BARU ---
+import { formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
+
 
 // Tipe data untuk dropdown Group
 interface Group {
@@ -45,19 +48,7 @@ interface Group {
   name: string;
 }
 
-// === HELPER UNTUK FORMAT/PARSE (Konsistensi) ===
-const formatCurrencyInput = (value: string | number) => {
-   if (typeof value === 'number') value = value.toString();
-   if (!value) return "";
-   const num = value.replace(/[^0-9]/g, "");
-   if (num === "0") return "0";
-   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-};
-
-const parseCurrencyInput = (value: string) => {
-   return value.replace(/[^0-9]/g, "");
-};
-// ============================================================================
+// --- 2. HAPUS HELPER LOKAL ---
 
 
 // Skema validasi Zod (diperbarui untuk menggunakan string input)
@@ -69,7 +60,7 @@ const debtReceivableFormSchema = z.object({
   counterparty: z.string().min(3, { message: "Nama pihak wajib diisi." }),
   amount: z.string() 
     .min(1, { message: "Nominal wajib diisi." })
-    .refine((val) => parseFloat(val.replace(/[^0-9]/g, "")) > 0, { message: "Nominal harus lebih dari 0." }),
+    .refine((val) => parseCurrencyInput(val) > 0, { message: "Nominal harus lebih dari 0." }),
   due_date: z.date().optional().nullable(),
   status: z.enum(["Belum Lunas", "Cicilan", "Lunas"], {
     required_error: "Status wajib dipilih.",
@@ -142,9 +133,9 @@ export const AddDebtReceivableDialog = ({
   const onSubmit = async (values: DebtReceivableFormValues) => {
     setLoading(true);
     try {
-      // Parse amount string menjadi number di sini
-      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
-      if (isNaN(finalAmount) || finalAmount <= 0) {
+      // --- 3. GUNAKAN HELPER BARU (string -> number) ---
+      const finalAmount = parseCurrencyInput(values.amount);
+      if (finalAmount <= 0) {
         throw new Error("Nominal tidak valid atau kosong.");
       }
       
@@ -283,11 +274,12 @@ export const AddDebtReceivableDialog = ({
                   <FormItem>
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
+                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input 
                         type="text" 
                         placeholder="1.000.000"
-                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        value={formatCurrencyInput(field.value)}
+                        onChange={e => field.onChange(e.target.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -329,7 +321,7 @@ export const AddDebtReceivableDialog = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">-- Tidak ada group --</SelectItem>
+                           <SelectItem value="none">-- Tidak ada group --</SelectItem>
                           {groups.map((group) => (
                             <SelectItem key={group.id} value={group.id}>
                               {group.name}
