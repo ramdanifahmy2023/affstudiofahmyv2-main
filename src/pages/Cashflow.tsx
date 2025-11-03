@@ -1,4 +1,4 @@
-// src/pages/Cashflow.tsx
+// src/pages/Cashflow.tsx (FIXED VERSION)
 
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
@@ -40,11 +40,8 @@ import { cn } from "@/lib/utils";
 
 // Import dialog-dialog
 import { AddTransactionDialog } from "@/components/Cashflow/AddTransactionDialog";
-
-// --- INI DIA PERBAIKANNYA ---
 import { EditTransactionDialog } from "@/components/Cashflow/EditTransactionDialog";
 import { DeleteTransactionAlert } from "@/components/Cashflow/DeleteTransactionAlert";
-// --- AKHIR PERBAIKAN ---
 
 // Tipe data untuk Transaksi
 export type TransactionData = {
@@ -83,11 +80,13 @@ const Cashflow = () => {
     delete: null,
   });
 
-  const canManage =
-    profile?.role === "superadmin" ||
-    profile?.role === "leader" ||
-    profile?.role === "admin";
-  const canDelete = profile?.role === "superadmin";
+  // ✅ PERBAIKAN: Cek apakah profile sudah ter-load
+  const canManage = profile && (
+    profile.role === "superadmin" ||
+    profile.role === "leader" ||
+    profile.role === "admin"
+  );
+  const canDelete = profile && profile.role === "superadmin";
 
   // Helper format
   const formatCurrency = (amount: number | null) => {
@@ -101,8 +100,13 @@ const Cashflow = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    const date = new Date(dateString + "T00:00:00");
-    return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
+    try {
+      const date = new Date(dateString + "T00:00:00");
+      if (isNaN(date.getTime())) return "-";
+      return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
+    } catch {
+      return "-";
+    }
   };
 
   // Fungsi ambil data
@@ -127,10 +131,18 @@ const Cashflow = () => {
         .order("transaction_date", { ascending: false });
 
       if (error) throw error;
-      setTransactions(data as any);
+      
+      // ✅ PERBAIKAN: Validasi data yang diterima
+      const validatedData = (data || []).map((item: any) => ({
+        ...item,
+        amount: typeof item.amount === 'number' ? item.amount : 0,
+        transaction_date: item.transaction_date || new Date().toISOString().split('T')[0],
+      }));
+      
+      setTransactions(validatedData as TransactionData[]);
     } catch (error: any) {
-      toast.error("Gagal memuat data cashflow.");
-      console.error(error);
+      console.error("Error fetching cashflow:", error);
+      toast.error("Gagal memuat data cashflow: " + (error?.message || "Unknown error"));
     } finally {
       setLoading(false);
     }
@@ -139,12 +151,13 @@ const Cashflow = () => {
   useEffect(() => {
     fetchTransactions();
   }, []);
-  
-  // Perhitungan Summary
+
+  // ✅ PERBAIKAN: Perhitungan Summary dengan validasi
   const { totalIncome, totalExpense, netBalance } = transactions.reduce(
     (acc, t) => {
-      if (t.type === 'income') acc.totalIncome += t.amount;
-      if (t.type === 'expense') acc.totalExpense += t.amount;
+      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      if (t.type === 'income') acc.totalIncome += amount;
+      if (t.type === 'expense') acc.totalExpense += amount;
       acc.netBalance = acc.totalIncome - acc.totalExpense;
       return acc;
     },
@@ -178,7 +191,7 @@ const Cashflow = () => {
           )}
         </div>
 
-        {/* --- KARTU SUMMARY --- */}
+        {/* KARTU SUMMARY */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -217,7 +230,6 @@ const Cashflow = () => {
             </CardContent>
           </Card>
         </div>
-        {/* --- AKHIR KARTU SUMMARY --- */}
 
         {/* Tabs dan Tabel Data */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
@@ -234,105 +246,107 @@ const Cashflow = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Deskripsi</TableHead>
-                      <TableHead>Grup</TableHead>
-                      <TableHead>Kategori</TableHead>
-                      <TableHead>Oleh</TableHead>
-                      <TableHead>Bukti</TableHead>
-                      <TableHead className="text-right">Jumlah</TableHead>
-                      {canManage && <TableHead>Aksi</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTransactions.length === 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center h-24">
-                          Belum ada data transaksi.
-                        </TableCell>
+                        <TableHead>Tanggal</TableHead>
+                        <TableHead>Deskripsi</TableHead>
+                        <TableHead>Grup</TableHead>
+                        <TableHead>Kategori</TableHead>
+                        <TableHead>Oleh</TableHead>
+                        <TableHead>Bukti</TableHead>
+                        <TableHead className="text-right">Jumlah</TableHead>
+                        {canManage && <TableHead className="w-20">Aksi</TableHead>}
                       </TableRow>
-                    )}
-                    {filteredTransactions.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell>{formatDate(t.transaction_date)}</TableCell>
-                        <TableCell className="font-medium">
-                          {t.description}
-                        </TableCell>
-                        <TableCell>
-                          {t.groups ? (
-                            <Badge variant="outline">{t.groups.name}</Badge>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                           <Badge variant="secondary">{t.category}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {t.profiles?.full_name || "-"}
-                        </TableCell>
-                        <TableCell>
-                          {t.proof_url ? (
-                            <Button variant="outline" size="icon" asChild>
-                              <a href={t.proof_url} target="_blank" rel="noopener noreferrer">
-                                <LinkIcon className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell className={cn(
-                          "text-right font-bold",
-                          t.type === 'income' ? "text-success" : "text-destructive"
-                        )}>
-                          {t.type === 'expense' && "-"}
-                          {formatCurrency(t.amount)}
-                        </TableCell>
-                        {canManage && (
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTransactions.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={canManage ? 8 : 7} className="text-center h-24">
+                            Belum ada data transaksi.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {filteredTransactions.map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell className="whitespace-nowrap">{formatDate(t.transaction_date)}</TableCell>
+                          <TableCell className="font-medium max-w-xs truncate">
+                            {t.description}
+                          </TableCell>
                           <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setDialogs({ ...dialogs, edit: t })
-                                  }
-                                >
-                                  <Edit className="mr-2 h-4 w-4" /> Edit
-                                </DropdownMenuItem>
-                                {canDelete && (
+                            {t.groups ? (
+                              <Badge variant="outline" className="whitespace-nowrap">{t.groups.name}</Badge>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="whitespace-nowrap">{t.category}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {t.profiles?.full_name || "-"}
+                          </TableCell>
+                          <TableCell>
+                            {t.proof_url ? (
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={t.proof_url} target="_blank" rel="noopener noreferrer">
+                                  <LinkIcon className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className={cn(
+                            "text-right font-bold whitespace-nowrap",
+                            t.type === 'income' ? "text-success" : "text-destructive"
+                          )}>
+                            {t.type === 'expense' && "-"}
+                            {formatCurrency(t.amount)}
+                          </TableCell>
+                          {canManage && (
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
                                   <DropdownMenuItem
-                                    className="text-destructive"
                                     onClick={() =>
-                                      setDialogs({ ...dialogs, delete: t })
+                                      setDialogs({ ...dialogs, edit: t })
                                     }
                                   >
-                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                    <Edit className="mr-2 h-4 w-4" /> Edit
                                   </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                                  {canDelete && (
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() =>
+                                        setDialogs({ ...dialogs, delete: t })
+                                      }
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
         </Tabs>
       </div>
 
-      {/* --- RENDER SEMUA DIALOG --- */}
+      {/* RENDER SEMUA DIALOG */}
       {canManage && (
         <>
           <AddTransactionDialog
