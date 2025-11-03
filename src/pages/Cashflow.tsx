@@ -1,4 +1,4 @@
-// src/pages/Cashflow.tsx (FIXED VERSION)
+// src/pages/Cashflow.tsx
 
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
@@ -17,6 +17,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ import {
   TrendingDown,
   Scale,
   Link as LinkIcon,
+  Download, // <-- 2. IMPORT DOWNLOAD ICON
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { AddTransactionDialog } from "@/components/Cashflow/AddTransactionDialog";
 import { EditTransactionDialog } from "@/components/Cashflow/EditTransactionDialog";
 import { DeleteTransactionAlert } from "@/components/Cashflow/DeleteTransactionAlert";
+import { useExport } from "@/hooks/useExport"; // <-- 3. IMPORT USE EXPORT
 
 // Tipe data untuk Transaksi
 export type TransactionData = {
@@ -80,7 +83,9 @@ const Cashflow = () => {
     delete: null,
   });
 
-  // ✅ PERBAIKAN: Cek apakah profile sudah ter-load
+  // --- 4. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+
   const canManage = profile && (
     profile.role === "superadmin" ||
     profile.role === "leader" ||
@@ -100,17 +105,20 @@ const Cashflow = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    // ✅ PERBAIKAN: Safety check untuk format tanggal
     try {
       const date = new Date(dateString + "T00:00:00");
-      if (isNaN(date.getTime())) return "-"; // Handle invalid date
+      if (isNaN(date.getTime())) return "-"; 
       return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
     } catch {
       return "-";
     }
   };
+  
+  const formatDateForExport = (dateString: string | null) => {
+    if (!dateString) return "-";
+    return dateString; // Format YYYY-MM-DD
+  };
 
-  // Fungsi ambil data
   const fetchTransactions = async () => {
     setLoading(true);
     try {
@@ -133,7 +141,6 @@ const Cashflow = () => {
 
       if (error) throw error;
       
-      // ✅ PERBAIKAN: Validasi data yang diterima
       const validatedData = (data || []).map((item: any) => ({
         ...item,
         amount: typeof item.amount === 'number' ? item.amount : 0,
@@ -153,7 +160,6 @@ const Cashflow = () => {
     fetchTransactions();
   }, []);
 
-  // ✅ PERBAIKAN: Perhitungan Summary dengan validasi
   const { totalIncome, totalExpense, netBalance } = transactions.reduce(
     (acc, t) => {
       const amount = typeof t.amount === 'number' ? t.amount : 0;
@@ -165,11 +171,49 @@ const Cashflow = () => {
     { totalIncome: 0, totalExpense: 0, netBalance: 0 }
   );
 
-  // Filter data untuk tabel
   const filteredTransactions = transactions.filter(t => {
     if (activeTab === 'all') return true;
     return t.type === activeTab;
   });
+  
+  // --- 5. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Tanggal', dataKey: 'transaction_date_formatted' },
+      { header: 'Tipe', dataKey: 'type' },
+      { header: 'Deskripsi', dataKey: 'description' },
+      { header: 'Kategori', dataKey: 'category' },
+      { header: 'Grup', dataKey: 'group_name' },
+      { header: 'Oleh', dataKey: 'created_by_name' },
+      { header: 'Nominal (Rp)', dataKey: 'amount_formatted' },
+    ];
+    
+    // Gunakan filteredTransactions agar sesuai dengan tab yang aktif
+    const exportData = filteredTransactions.map(t => ({
+        ...t,
+        transaction_date_formatted: formatDateForExport(t.transaction_date),
+        group_name: t.groups?.name || '-',
+        created_by_name: t.profiles?.full_name || '-',
+        // Format nominal sebagai angka (positif/negatif)
+        amount_formatted: t.type === 'income' ? t.amount : -t.amount,
+    }));
+    
+    const tabTitle = activeTab === 'all' ? 'Semua' : (activeTab === 'income' ? 'Pemasukan' : 'Pengeluaran');
+
+    const options = {
+        filename: `Laporan_Cashflow_${tabTitle}`,
+        title: `Laporan Arus Kas (Cashflow) - ${tabTitle}`,
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
 
   return (
     <MainLayout>
@@ -181,15 +225,35 @@ const Cashflow = () => {
               Kelola semua pemasukan dan pengeluaran.
             </p>
           </div>
-          {canManage && (
-            <Button
-              className="gap-2"
-              onClick={() => setDialogs({ ...dialogs, add: true })}
-            >
-              <Plus className="h-4 w-4" />
-              Tambah Transaksi
-            </Button>
-          )}
+          {/* --- 6. TAMBAHKAN DROPDOWN EXPORT DI SINI --- */}
+          <div className="flex gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2" disabled={isExporting || filteredTransactions.length === 0}>
+                      <Download className="h-4 w-4" />
+                      {isExporting ? 'Mengekspor...' : 'Export'}
+                  </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                      Export PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                      Export CSV
+                  </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {canManage && (
+              <Button
+                className="gap-2"
+                onClick={() => setDialogs({ ...dialogs, add: true })}
+              >
+                <Plus className="h-4 w-4" />
+                Tambah Transaksi
+              </Button>
+            )}
+          </div>
+          {/* ------------------------------------------- */}
         </div>
 
         {/* KARTU SUMMARY */}
@@ -323,14 +387,17 @@ const Cashflow = () => {
                                     <Edit className="mr-2 h-4 w-4" /> Edit
                                   </DropdownMenuItem>
                                   {canDelete && (
-                                    <DropdownMenuItem
-                                      className="text-destructive"
-                                      onClick={() =>
-                                        setDialogs({ ...dialogs, delete: t })
-                                      }
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" /> Hapus
-                                    </DropdownMenuItem>
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive"
+                                        onClick={() =>
+                                          setDialogs({ ...dialogs, delete: t })
+                                        }
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                      </DropdownMenuItem>
+                                    </>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>

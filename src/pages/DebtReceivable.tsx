@@ -20,19 +20,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
-// PENTING: Menggunakan dialog yang lebih modular
+import { id as indonesiaLocale } from "date-fns/locale";
 import { AddDebtReceivableDialog } from "@/components/DebtReceivable/AddDebtReceivableDialog"; 
 import { EditDebtDialog } from "@/components/Debt/EditDebtDialog"; 
 import { DeleteDebtAlert } from "@/components/Debt/DeleteDebtAlert"; 
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
 
-// Tipe data dari Supabase (Diperluas untuk Edit/Delete)
+// Tipe data dari Supabase
 export type DebtData = {
   id: string;
   created_at: string;
@@ -41,15 +43,15 @@ export type DebtData = {
   amount: number;
   due_date: string | null;
   status: string | null;
-  description: string | null; // Tambahkan ini untuk Edit
-  group_id: string | null; // Tambahkan ini untuk Edit
-  groups: { name: string, id: string } | null; // Tambahkan id group
+  description: string | null; 
+  group_id: string | null; 
+  groups: { name: string, id: string } | null; 
 };
 
 // Tipe untuk dialog
 type DialogState = {
   add: boolean;
-  addType: "debt" | "receivable"; // Tambahkan state untuk tipe
+  addType: "debt" | "receivable"; 
   edit: DebtData | null;
   delete: DebtData | null;
 };
@@ -61,7 +63,9 @@ const DebtReceivable = () => {
   const [activeTab, setActiveTab] = useState<"debt" | "receivable">("debt");
   const [searchTerm, setSearchTerm] = useState("");
   
-  // State untuk Dialogs
+  // --- 3. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
     addType: "debt",
@@ -69,12 +73,11 @@ const DebtReceivable = () => {
     delete: null,
   });
 
-  // Hak akses berdasarkan blueprint
   const canCreate =
     profile?.role === "superadmin" ||
     profile?.role === "leader" ||
     profile?.role === "admin";
-  const canManage = profile?.role === "superadmin" || profile?.role === "admin"; // Admin & Superadmin bisa Manage
+  const canManage = profile?.role === "superadmin" || profile?.role === "admin"; 
 
   // Helper format
   const formatCurrency = (amount: number) => {
@@ -88,16 +91,18 @@ const DebtReceivable = () => {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
     try {
-      // Tambahkan "T00:00:00" untuk menghindari masalah timezone
       return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "dd MMM yyyy");
     } catch (e) { return "-"; }
   }
+  
+  const formatDateForExport = (dateString: string | null) => {
+    if (!dateString) return "-";
+    return dateString; // Format YYYY-MM-DD
+  };
 
-  // Fetch data
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Ambil group_id dan description untuk kebutuhan Edit
       const { data, error } = await supabase
         .from("debt_receivable")
         .select(`
@@ -140,7 +145,6 @@ const DebtReceivable = () => {
       t.counterparty.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Filter hanya yang Belum Lunas atau Cicilan untuk Summary
   const totalDebt = debts.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
   const totalReceivable = receivables.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
   const netPosition = totalReceivable - totalDebt;
@@ -158,12 +162,51 @@ const DebtReceivable = () => {
     }
   };
   
-  // Handlers untuk Dialog
+  // --- 4. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Tanggal Dibuat', dataKey: 'created_at_formatted' },
+      { header: 'Pihak Terkait', dataKey: 'counterparty' },
+      { header: 'Grup', dataKey: 'group_name' },
+      { header: 'Jatuh Tempo', dataKey: 'due_date_formatted' },
+      { header: 'Status', dataKey: 'status' },
+      { header: 'Nominal (Rp)', dataKey: 'amount' },
+      { header: 'Deskripsi', dataKey: 'description' },
+    ];
+    
+    // Tentukan data berdasarkan tab aktif
+    const dataToExport = activeTab === 'debt' ? debts : receivables;
+    const tabTitle = activeTab === 'debt' ? 'Hutang' : 'Piutang';
+    
+    const exportData = dataToExport.map(item => ({
+        ...item,
+        created_at_formatted: formatDateForExport(item.created_at),
+        due_date_formatted: formatDateForExport(item.due_date),
+        group_name: item.groups?.name || '-',
+        description: item.description || '-',
+        status: item.status || 'Pending',
+    }));
+
+    const options = {
+        filename: `Laporan_${tabTitle}`,
+        title: `Laporan ${tabTitle} Perusahaan`,
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+  
+  
   const handleAddClick = () => {
     setDialogs({ 
         ...dialogs, 
         add: true, 
-        addType: activeTab as "debt" | "receivable" // Set tipe berdasarkan tab aktif
+        addType: activeTab as "debt" | "receivable"
     });
   }
   
@@ -177,7 +220,7 @@ const DebtReceivable = () => {
   
   const handleSuccess = () => {
      setDialogs({ ...dialogs, add: false, edit: null, delete: null });
-     fetchData(); // Refresh data
+     fetchData(); 
   }
 
   const renderTable = (items: DebtData[]) => (
@@ -233,6 +276,7 @@ const DebtReceivable = () => {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => handleDeleteClick(item)}
@@ -332,10 +376,24 @@ const DebtReceivable = () => {
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" className="gap-2 shrink-0" disabled>
-                    <Download className="h-4 w-4" />
-                    Export
-                  </Button>
+                  {/* --- 5. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="gap-2" disabled={isExporting || (activeTab === 'debt' ? debts.length === 0 : receivables.length === 0)}>
+                            <Download className="h-4 w-4" />
+                            {isExporting ? 'Mengekspor...' : 'Export'}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                            Export PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                            Export CSV
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {/* ------------------------------------------- */}
                 </div>
               </div>
             </Tabs>
@@ -347,12 +405,9 @@ const DebtReceivable = () => {
                 </div>
             ) : (
               <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as "debt" | "receivable")}>
-                {/* Hutang Tab */}
                 <TabsContent value="debt" className="mt-0">
                   {renderTable(debts)}
                 </TabsContent>
-
-                {/* Piutang Tab */}
                 <TabsContent value="receivable" className="mt-0">
                   {renderTable(receivables)}
                 </TabsContent>
@@ -362,11 +417,10 @@ const DebtReceivable = () => {
         </Card>
       </div>
       
-      {/* RENDER SEMUA DIALOG */}
       {canCreate && (
          <AddDebtReceivableDialog
            open={dialogs.add}
-           type={dialogs.addType} // Kirim tipe dinamis
+           type={dialogs.addType} 
            onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
            onSuccess={handleSuccess}
          />

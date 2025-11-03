@@ -19,6 +19,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -30,11 +31,12 @@ import { SetTargetDialog } from "@/components/KPI/SetTargetDialog";
 import { EditTargetDialog } from "@/components/KPI/EditTargetDialog"; 
 import { DeleteTargetAlert } from "@/components/KPI/DeleteTargetAlert"; 
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
 
 // Tipe data dari Supabase
 export type KpiData = {
   id: string;
-  employee_id: string; // Tambahkan untuk keperluan Edit/Delete
+  employee_id: string; 
   target_month: string;
   sales_target: number;
   commission_target: number;
@@ -76,7 +78,9 @@ const KPI = () => {
     delete: null,
   });
 
-  // Cek hak akses
+  // --- 3. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
   const canRead = canManage || profile?.role === "admin" || profile?.role === "viewer";
   const canDelete = profile?.role === "superadmin";
@@ -93,7 +97,6 @@ const KPI = () => {
   
   const formatDateMonth = (dateString: string) => {
     try {
-      // Pastikan format tanggal aman untuk new Date()
       return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "MMM yyyy");
     } catch (e) { return "-"; }
   }
@@ -101,12 +104,9 @@ const KPI = () => {
   // Kalkulasi KPI
   const calculateKpi = (data: KpiData[]): CalculatedKpi[] => {
     return data.map(item => {
-      // Bobot: Omset (50%), Komisi (30%), Absensi (20%)
       const sales_pct = (item.sales_target > 0) ? ((item.actual_sales || 0) / item.sales_target) * 100 : 0;
       const commission_pct = (item.commission_target > 0) ? ((item.actual_commission || 0) / item.commission_target) * 100 : 0;
       const attendance_pct = (item.attendance_target > 0) ? ((item.actual_attendance || 0) / item.attendance_target) * 100 : 0;
-      
-      // Total KPI = (Realisasi Omset × 0.5) + (Realisasi Komisi × 0.3) + (Realisasi Kehadiran × 0.2)
       const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
       
       return {
@@ -114,12 +114,11 @@ const KPI = () => {
         sales_pct: Math.min(sales_pct, 100),
         commission_pct: Math.min(commission_pct, 100),
         attendance_pct: Math.min(attendance_pct, 100),
-        total_kpi: Math.min(total_kpi, 100), // Batasi maks 100%
+        total_kpi: Math.min(total_kpi, 100), 
       };
     });
   };
 
-  // Fetch data
   const fetchKpiData = async () => {
     setLoading(true);
     if (!canRead && profile) {
@@ -164,11 +163,10 @@ const KPI = () => {
     if (profile) fetchKpiData();
   }, [profile]);
   
-  // Helper warna progress bar (sesuai blueprint)
   const getKpiColor = (kpi: number) => {
-    if (kpi >= 100) return "bg-success"; // Hijau: ≥ 100%
-    if (kpi >= 70) return "bg-warning"; // Kuning: 70-99%
-    return "bg-destructive"; // Merah: < 70%
+    if (kpi >= 100) return "bg-success";
+    if (kpi >= 70) return "bg-warning";
+    return "bg-destructive";
   };
   
   const handleEditClick = (kpi: KpiData) => {
@@ -181,15 +179,57 @@ const KPI = () => {
   
   const handleSuccess = () => {
      setDialogs({ add: false, edit: null, delete: null });
-     fetchKpiData(); // Refresh data
+     fetchKpiData(); 
   };
   
-  // Filter lokal berdasarkan search term
   const filteredKpiData = kpiData.filter(item => 
     item.employees?.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  
+  // --- 4. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Rank', dataKey: 'rank' },
+      { header: 'Karyawan', dataKey: 'employee_name' },
+      { header: 'Bulan', dataKey: 'month_formatted' },
+      { header: 'Omset Aktual', dataKey: 'actual_sales_formatted' },
+      { header: 'Omset Target', dataKey: 'sales_target_formatted' },
+      { header: 'Komisi Aktual', dataKey: 'actual_commission_formatted' },
+      { header: 'Komisi Target', dataKey: 'commission_target_formatted' },
+      { header: 'Absen Aktual', dataKey: 'actual_attendance_formatted' },
+      { header: 'Absen Target', dataKey: 'attendance_target_formatted' },
+      { header: 'Total KPI %', dataKey: 'total_kpi_formatted' },
+    ];
+    
+    const exportData = filteredKpiData.map((item, index) => ({
+        ...item,
+        rank: `#${index + 1}`,
+        employee_name: item.employees?.profiles?.full_name || 'N/A',
+        month_formatted: formatDateMonth(item.target_month),
+        actual_sales_formatted: formatCurrency(item.actual_sales),
+        sales_target_formatted: formatCurrency(item.sales_target),
+        actual_commission_formatted: formatCurrency(item.actual_commission),
+        commission_target_formatted: formatCurrency(item.commission_target),
+        actual_attendance_formatted: `${item.actual_attendance || 0} hari`,
+        attendance_target_formatted: `${item.attendance_target} hari`,
+        total_kpi_formatted: `${item.total_kpi.toFixed(1)}%`
+    }));
 
-  // Jika tidak bisa membaca (akses ditolak)
+    const options = {
+        filename: 'Laporan_KPI_Karyawan',
+        title: 'Laporan KPI Karyawan',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
+
   if (!canRead && !loading) {
      return (
         <MainLayout>
@@ -218,7 +258,6 @@ const KPI = () => {
           )}
         </div>
 
-        {/* Ranking Table */}
         <Card>
           <CardHeader>
             <CardTitle>Ranking Karyawan (Berdasarkan KPI Total)</CardTitle>
@@ -233,10 +272,24 @@ const KPI = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Button variant="outline" className="gap-2" disabled>
-                <Download className="h-4 w-4" />
-                Export (Soon)
-              </Button>
+              {/* --- 5. AKTIFKAN DROPDOWN EXPORT --- */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2" disabled={isExporting || filteredKpiData.length === 0}>
+                        <Download className="h-4 w-4" />
+                        {isExporting ? 'Mengekspor...' : 'Export'}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                        Export PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                        Export CSV
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {/* --------------------------------- */}
             </div>
           </CardHeader>
           <CardContent>
@@ -319,13 +372,16 @@ const KPI = () => {
                                   Edit Target
                                 </DropdownMenuItem>
                                 {canDelete && (
-                                  <DropdownMenuItem 
-                                    className="text-destructive"
-                                    onClick={() => handleDeleteClick(item)}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Hapus Target
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem 
+                                      className="text-destructive"
+                                      onClick={() => handleDeleteClick(item)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Hapus Target
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -341,7 +397,6 @@ const KPI = () => {
         </Card>
       </div>
 
-      {/* Render Dialogs */}
       {canManage && (
          <>
            <SetTargetDialog

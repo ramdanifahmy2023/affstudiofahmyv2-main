@@ -17,6 +17,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,6 +29,7 @@ import {
   DollarSign,
   TrendingUp,
   Wallet,
+  Download, // <-- 2. IMPORT DOWNLOAD ICON
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +41,7 @@ import { id as indonesiaLocale } from "date-fns/locale";
 import { AddCommissionDialog } from "@/components/Commission/AddCommissionDialog";
 import { EditCommissionDialog } from "@/components/Commission/EditCommissionDialog";
 import { DeleteCommissionAlert } from "@/components/Commission/DeleteCommissionAlert";
+import { useExport } from "@/hooks/useExport"; // <-- 3. IMPORT USE EXPORT
 
 // Tipe data untuk komisi
 export type CommissionData = {
@@ -46,9 +49,9 @@ export type CommissionData = {
   period: string;
   period_start: string;
   period_end: string;
-  gross_commission: number; // Dari DB tetap number
-  net_commission: number;   // Dari DB tetap number
-  paid_commission: number;  // Dari DB tetap number
+  gross_commission: number;
+  net_commission: number;
+  paid_commission: number;
   payment_date: string | null;
   accounts: {
     id: string;
@@ -81,12 +84,15 @@ const Commissions = () => {
     delete: null,
   });
 
+  // --- 4. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+
   const canManage =
     profile?.role === "superadmin" ||
     profile?.role === "leader" ||
     profile?.role === "admin";
     
-  const canDelete = profile?.role === "superadmin"; // Hanya superadmin bisa hapus
+  const canDelete = profile?.role === "superadmin";
 
   // Helper format
   const formatCurrency = (amount: number | null) => {
@@ -97,15 +103,24 @@ const Commissions = () => {
       minimumFractionDigits: 0,
     }).format(amount);
   };
+  
+  const formatCurrencyForExport = (amount: number | null) => {
+    if (amount === null || isNaN(amount)) return "0";
+    return amount.toString(); // Export angka mentah untuk CSV
+  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    // Tambahkan "T00:00:00" untuk menghindari masalah timezone
     const date = new Date(dateString + "T00:00:00"); 
     return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
   };
+  
+  const formatDateForExport = (dateString: string | null) => {
+    if (!dateString) return "-";
+    return dateString; // Format YYYY-MM-DD
+  };
 
-  // Fungsi ambil data dan kalkulasi summary
+
   const fetchCommissions = async () => {
     setLoading(true);
     try {
@@ -129,7 +144,6 @@ const Commissions = () => {
       if (error) throw error;
       setCommissions(data as any);
       
-      // Hitung summary
       const gross = data.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
       const net = data.reduce((acc, c) => acc + (c.net_commission || 0), 0);
       const paid = data.reduce((acc, c) => acc + (c.paid_commission || 0), 0);
@@ -146,6 +160,44 @@ const Commissions = () => {
   useEffect(() => {
     fetchCommissions();
   }, []);
+  
+  // --- 5. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Akun', dataKey: 'account_username' },
+      { header: 'Periode', dataKey: 'period' },
+      { header: 'Tgl Mulai', dataKey: 'period_start' },
+      { header: 'Tgl Selesai', dataKey: 'period_end' },
+      { header: 'Tgl Cair', dataKey: 'payment_date_formatted' },
+      { header: 'Komisi Kotor (Rp)', dataKey: 'gross_commission' },
+      { header: 'Komisi Bersih (Rp)', dataKey: 'net_commission' },
+      { header: 'Komisi Cair (Rp)', dataKey: 'paid_commission' },
+    ];
+    
+    const exportData = commissions.map(c => ({
+        ...c,
+        account_username: c.accounts?.username || 'N/A',
+        payment_date_formatted: formatDateForExport(c.payment_date),
+        // Gunakan angka mentah untuk CSV/PDF
+        gross_commission: c.gross_commission || 0,
+        net_commission: c.net_commission || 0,
+        paid_commission: c.paid_commission || 0,
+    }));
+
+    const options = {
+        filename: 'Laporan_Data_Komisi',
+        title: 'Laporan Data Komisi Affiliate',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
 
   return (
     <MainLayout>
@@ -200,13 +252,31 @@ const Commissions = () => {
             </CardContent>
           </Card>
         </div>
-        {/* --- AKHIR KARTU SUMMARY --- */}
 
         {/* Tabel Data */}
         <Card>
           <CardHeader>
-            <CardTitle>Riwayat Komisi</CardTitle>
-            <Button variant="outline" disabled>Export (Soon)</Button>
+            {/* --- 6. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
+            <div className="flex justify-between items-center">
+              <CardTitle>Riwayat Komisi</CardTitle>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2" disabled={isExporting || commissions.length === 0}>
+                        <Download className="h-4 w-4" />
+                        {isExporting ? 'Mengekspor...' : 'Export'}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                        Export PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                        Export CSV
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+             {/* ------------------------------------------- */}
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -263,7 +333,6 @@ const Commissions = () => {
                         <TableCell className="text-right font-bold text-success">
                           {formatCurrency(c.paid_commission)}
                         </TableCell>
-                        {/* --- DROPDOWN AKSI --- */}
                         {canManage && (
                           <TableCell>
                             <DropdownMenu>
@@ -281,20 +350,22 @@ const Commissions = () => {
                                   <Edit className="mr-2 h-4 w-4" /> Edit
                                 </DropdownMenuItem>
                                 {canDelete && (
-                                  <DropdownMenuItem
-                                    className="text-destructive"
-                                    onClick={() =>
-                                      setDialogs({ ...dialogs, delete: c })
-                                    }
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() =>
+                                        setDialogs({ ...dialogs, delete: c })
+                                      }
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
                         )}
-                        {/* --- AKHIR DROPDOWN AKSI --- */}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -305,7 +376,6 @@ const Commissions = () => {
         </Card>
       </div>
 
-      {/* --- RENDER SEMUA DIALOG --- */}
       {canManage && (
         <>
           <AddCommissionDialog
@@ -313,7 +383,7 @@ const Commissions = () => {
             onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
             onSuccess={() => {
               setDialogs({ ...dialogs, add: false });
-              fetchCommissions(); // Refresh data
+              fetchCommissions(); 
             }}
           />
           {dialogs.edit && (
@@ -324,7 +394,7 @@ const Commissions = () => {
               }
               onSuccess={() => {
                 setDialogs({ ...dialogs, edit: null });
-                fetchCommissions(); // Refresh data
+                fetchCommissions(); 
               }}
               commission={dialogs.edit}
             />
@@ -337,7 +407,7 @@ const Commissions = () => {
               }
               onSuccess={() => {
                 setDialogs({ ...dialogs, delete: null });
-                fetchCommissions(); // Refresh data
+                fetchCommissions(); 
               }}
               commission={dialogs.delete}
             />

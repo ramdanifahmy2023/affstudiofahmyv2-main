@@ -16,19 +16,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
+  DropdownMenuSeparator, 
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2, Eye } from "lucide-react"; // <-- 2. IMPORT EYE ICON
+import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2, Eye, Download } from "lucide-react"; // <-- 1. IMPORT DOWNLOAD
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; 
 import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; 
 import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; 
-import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog"; // <-- 3. IMPORT MODAL BARU
+import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog";
+import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
 
 // Tipe data gabungan dari profiles, employees, dan groups
 export interface EmployeeProfile {
@@ -46,7 +47,7 @@ export interface EmployeeProfile {
 }
 
 const Employees = () => {
-  const { profile } = useAuth(); // Untuk cek role
+  const { profile } = useAuth(); 
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   
@@ -54,14 +55,16 @@ const Employees = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
-  const [isDetailOpen, setIsDetailOpen] = useState(false); // <-- 4. STATE BARU UNTUK MODAL DETAIL
+  const [isDetailOpen, setIsDetailOpen] = useState(false); 
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
+
+  // --- 3. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
 
   // Fungsi untuk mengambil data karyawan
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      // Kita perlu join 3 tabel: employees, profiles, dan groups
       const { data, error } = await supabase
         .from("employees")
         .select(`
@@ -85,7 +88,6 @@ const Employees = () => {
 
       if (error) throw error;
 
-      // Map data agar flat dan mudah dibaca tabel
       const formattedData: EmployeeProfile[] = data.map((emp: any) => ({
         id: emp.id,
         profile_id: emp.profile_id,
@@ -114,17 +116,14 @@ const Employees = () => {
     fetchEmployees();
   }, []);
 
-  // Cek hak akses (Superadmin: CRUD, Leader: CRU)
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
-  const canDelete = profile?.role === "superadmin"; // Hanya Superadmin bisa Hapus (Soft Delete)
+  const canDelete = profile?.role === "superadmin";
 
 
-  // Helper untuk avatar fallback
   const getAvatarFallback = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
-  // Handler untuk membuka dialog
   const handleOpenDetail = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsDetailOpen(true);
@@ -140,19 +139,50 @@ const Employees = () => {
     setIsAlertOpen(true);
   };
 
-  // Handler untuk menutup semua dialog/alert
   const closeAllModals = () => {
     setIsAddDialogOpen(false);
     setIsEditDialogOpen(false);
     setIsAlertOpen(false);
-    setIsDetailOpen(false); // <-- 5. TAMBAHKAN TUTUP MODAL DETAIL
+    setIsDetailOpen(false); 
     setSelectedEmployee(null);
   };
 
-  // Handler sukses (refresh data)
   const handleSuccess = () => {
     closeAllModals();
-    fetchEmployees(); // Refresh tabel setelah sukses
+    fetchEmployees(); 
+  };
+  
+  // --- 4. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Nama Lengkap', dataKey: 'full_name' },
+      { header: 'Jabatan', dataKey: 'position' },
+      { header: 'Email', dataKey: 'email' },
+      { header: 'No. HP', dataKey: 'phone' },
+      { header: 'Grup', dataKey: 'group_name' },
+      { header: 'Status', dataKey: 'status' },
+      { header: 'Role', dataKey: 'role' },
+    ];
+    
+    // Gunakan data 'employees' yang sudah di-fetch
+    const exportData = employees.map(emp => ({
+        ...emp,
+        position: emp.position || '-',
+        phone: emp.phone || '-',
+    }));
+
+    const options = {
+        filename: 'Daftar_Karyawan',
+        title: 'Laporan Daftar Karyawan',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
   };
 
 
@@ -166,12 +196,32 @@ const Employees = () => {
               Kelola data karyawan, group, dan hak akses.
             </p>
           </div>
-          {canManage && (
-            <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
-              <PlusCircle className="h-4 w-4" />
-              Tambah Karyawan
-            </Button>
-          )}
+          {/* --- 5. TAMBAHKAN DROPDOWN EXPORT --- */}
+          <div className="flex gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2" disabled={isExporting || employees.length === 0}>
+                      <Download className="h-4 w-4" />
+                      {isExporting ? 'Mengekspor...' : 'Export'}
+                  </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                      Export PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                      Export CSV
+                  </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {canManage && (
+              <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
+                <PlusCircle className="h-4 w-4" />
+                Tambah Karyawan
+              </Button>
+            )}
+          </div>
+          {/* ---------------------------------- */}
         </div>
 
         {/* Card Tabel Karyawan */}
@@ -257,13 +307,11 @@ const Employees = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent>
-                                {/* --- 6. TAMBAHKAN MENU ITEM BARU --- */}
                                 <DropdownMenuItem onClick={() => handleOpenDetail(emp)}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   Lihat Detail
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                {/* --------------------------------- */}
                                 <DropdownMenuItem onClick={() => handleOpenEdit(emp)}>
                                   Edit
                                 </DropdownMenuItem>
@@ -294,14 +342,12 @@ const Employees = () => {
         </Card>
       </div>
 
-      {/* Dialog Tambah Karyawan */}
       <AddEmployeeDialog
         isOpen={isAddDialogOpen}
         onClose={closeAllModals}
         onSuccess={handleSuccess}
       />
 
-      {/* Dialog Edit Karyawan */}
       {selectedEmployee && (
         <EditEmployeeDialog
           isOpen={isEditDialogOpen}
@@ -311,7 +357,6 @@ const Employees = () => {
         />
       )}
 
-      {/* Alert Hapus Karyawan */}
       {selectedEmployee && (
         <DeleteEmployeeAlert
           isOpen={isAlertOpen}
@@ -321,7 +366,6 @@ const Employees = () => {
         />
       )}
       
-      {/* --- 7. RENDER MODAL DETAIL BARU --- */}
       {selectedEmployee && (
         <EmployeeDetailDialog
           isOpen={isDetailOpen}
@@ -329,7 +373,6 @@ const Employees = () => {
           employee={selectedEmployee}
         />
       )}
-      {/* ----------------------------------- */}
     </MainLayout>
   );
 };

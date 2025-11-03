@@ -5,6 +5,12 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // <-- 1. IMPORT DROPDOWN
 import { Search, Download, TrendingUp, TrendingDown, Loader2, Percent } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -13,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
 
 // Definisi Tipe
 type CashflowData = { type: "income" | "expense"; amount: number; category: string | null; description: string };
@@ -25,12 +32,13 @@ const ProfitLoss = () => {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   const [expenseBreakdown, setExpenseBreakdown] = useState<SummaryItem[]>([]);
-  const [taxRate, setTaxRate] = useState(0.1); // Default 10% 
+  const [taxRate, setTaxRate] = useState(0.1); 
   
-  // Cek hak akses 
+  // --- 3. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+
   const canRead = profile?.role === "superadmin" || profile?.role === "admin" || profile?.role === "leader" || profile?.role === "viewer";
   
-  // Helper format
   const formatCurrency = (amount: number, style: 'currency' | 'decimal' = 'currency') => {
     return new Intl.NumberFormat("id-ID", {
       style: style,
@@ -39,7 +47,6 @@ const ProfitLoss = () => {
     }).format(amount);
   };
   
-  // Fetch data Cashflow dan Commission
   const fetchData = async () => {
     setLoading(true);
     if (!canRead && profile) {
@@ -49,7 +56,6 @@ const ProfitLoss = () => {
     }
 
     try {
-      // 1. Fetch Total Komisi Cair (Pendapatan) 
       const { data: commsData, error: commsError } = await supabase
         .from("commissions")
         .select(`paid_commission`);
@@ -59,7 +65,6 @@ const ProfitLoss = () => {
       const totalPaidCommission = (commsData as CommissionData[]).reduce((sum, c) => sum + (c.paid_commission || 0), 0);
       setTotalIncome(totalPaidCommission);
 
-      // 2. Fetch Total Pengeluaran (Cashflow Expense) 
       const { data: cfData, error: cfError } = await supabase
         .from("cashflow")
         .select(`type, amount, category, description`);
@@ -70,7 +75,6 @@ const ProfitLoss = () => {
       const totalExpenses = expenseItems.reduce((sum, item) => sum + item.amount, 0);
       setTotalExpense(totalExpenses);
 
-      // 3. Hitung Breakdown Pengeluaran untuk Chart 
       const breakdown: { [key: string]: number } = {
           'Fixed Cost': 0,
           'Variable Cost': 0,
@@ -78,7 +82,6 @@ const ProfitLoss = () => {
       };
 
       expenseItems.forEach(item => {
-        // Asumsi category di DB cashflow menggunakan 'fixed' / 'variable'
         if (item.category === 'fixed' || item.category === 'Fix Cost') { 
             breakdown['Fixed Cost'] += item.amount;
         } else if (item.category === 'variable' || item.category === 'Variable Cost') {
@@ -88,17 +91,15 @@ const ProfitLoss = () => {
         }
       });
       
-      // Filter out 'Lainnya' jika 0 dan mapping ke format Recharts
       const chartData: SummaryItem[] = Object.entries(breakdown)
         .filter(([, value]) => value > 0)
         .map(([name, value], index) => ({ 
             name, 
             value,
-            color: `hsl(var(--chart-${index + 1}))` // Menggunakan warna dari tailwind config
+            color: `hsl(var(--chart-${index + 1}))` 
         }));
         
       setExpenseBreakdown(chartData);
-
 
     } catch (error: any) {
       toast.error("Gagal memuat data Laba Rugi: " + error.message);
@@ -119,13 +120,42 @@ const ProfitLoss = () => {
   const taxAmount = labaKotor * taxRate;       
   const labaBersih = labaKotor - taxAmount;     
   
-  // Data Chart Laba Rugi Sederhana (Bar Chart untuk perbandingan)
   const financialSummaryData = [
     { name: 'Pendapatan (Komisi Cair)', Amount: totalIncome, fill: 'hsl(var(--success))' },
     { name: 'Pengeluaran', Amount: totalExpense, fill: 'hsl(var(--destructive))' },
     { name: 'Laba Kotor', Amount: labaKotor, fill: 'hsl(var(--chart-1))' },
   ];
   
+  // --- 4. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Deskripsi', dataKey: 'description' },
+      { header: 'Nominal (Rp)', dataKey: 'amount' },
+    ];
+    
+    const exportData = [
+      { description: 'Total Pendapatan (Komisi Cair)', amount: totalIncome },
+      { description: 'Total Pengeluaran', amount: -totalExpense }, // CSV/PDF-friendly
+      { description: 'Laba Kotor', amount: labaKotor },
+      { description: `Pajak (${(taxRate * 100).toFixed(0)}%)`, amount: -taxAmount },
+      { description: 'Laba Bersih (Net Income)', amount: labaBersih },
+    ];
+
+    const options = {
+        filename: 'Laporan_Laba_Rugi',
+        title: 'Laporan Laba Rugi',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
+
   if (loading) {
       return (
          <MainLayout>
@@ -137,7 +167,6 @@ const ProfitLoss = () => {
       );
   }
 
-  // Jika tidak bisa membaca (akses ditolak)
   if (!canRead) {
      return (
         <MainLayout>
@@ -157,13 +186,27 @@ const ProfitLoss = () => {
             <h1 className="text-3xl font-bold">Laba Rugi Bisnis</h1>
             <p className="text-muted-foreground">Perhitungan otomatis dari Komisi Cair dan Pengeluaran Cashflow.</p>
           </div>
+          {/* --- 5. TAMBAHKAN DROPDOWN EXPORT --- */}
           <div className="flex gap-2">
             <Button variant="outline" disabled>Filter (Soon)</Button>
-            <Button variant="outline" className="gap-2" disabled>
-              <Download className="h-4 w-4" />
-              Export PDF/CSV
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2" disabled={isExporting}>
+                      <Download className="h-4 w-4" />
+                      {isExporting ? 'Mengekspor...' : 'Export'}
+                  </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                      Export PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                      Export CSV
+                  </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+          {/* --------------------------------- */}
         </div>
 
         {/* Summary Cards */}
@@ -222,7 +265,6 @@ const ProfitLoss = () => {
 
         {/* Charts and Tax Calculation */}
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Laba Rugi Bar Chart (Quarterly Comparison Bar Chart) */}
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Perbandingan Posisi Keuangan</CardTitle>
@@ -248,7 +290,6 @@ const ProfitLoss = () => {
             </CardContent>
           </Card>
           
-          {/* Tax Calculation Card */}
           <Card>
             <CardHeader>
               <CardTitle>Perhitungan Pajak & Laba Bersih</CardTitle>
@@ -292,7 +333,6 @@ const ProfitLoss = () => {
           </Card>
         </div>
         
-        {/* Expense Breakdown (Breakdown Pengeluaran (Bar Chart)) */}
         <Card>
            <CardHeader>
              <CardTitle>Breakdown Pengeluaran</CardTitle>
@@ -307,7 +347,6 @@ const ProfitLoss = () => {
                         contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)" }}
                         formatter={(value: number) => formatCurrency(value)}
                     />
-                    {/* Menggunakan warna dinamis dari state */}
                     <Bar dataKey="value" name="Total Pengeluaran" fill="hsl(var(--destructive))" radius={[0, 8, 8, 0]}>
                        {expenseBreakdown.map((entry, index) => (
                            <Bar key={`bar-${index}`} dataKey="value" fill={entry.color} />

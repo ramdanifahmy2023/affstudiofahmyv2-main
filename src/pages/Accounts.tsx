@@ -5,7 +5,6 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-// --- 1. IMPORT ICON BARU ---
 import { Plus, Search, Download, UserCircle, Loader2, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 import {
   Table,
@@ -20,6 +19,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT DROPDOWN SEPARATOR
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,10 +28,10 @@ import { toast } from "sonner";
 import { AddAccountDialog } from "@/Account/AddAccountDialog";
 import { EditAccountDialog } from "@/Account/EditAccountDialog"; 
 import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert"; 
-// --- 2. IMPORT DIALOG BARU ---
 import { BulkImportDialog } from "@/Account/BulkImportDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
 
 // Tipe data dari Supabase (diperbarui untuk menangani null dari DB)
 type AccountData = {
@@ -52,7 +52,7 @@ type DialogState = {
   add: boolean;
   edit: AccountData | null;
   delete: AccountData | null;
-  import: boolean; // <-- 3. TAMBAHKAN STATE IMPORT
+  import: boolean; 
 };
 
 const Accounts = () => {
@@ -63,20 +63,20 @@ const Accounts = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [platformFilter, setPlatformFilter] = useState("all");
   
-  // State untuk Dialogs
+  // --- 3. INISIALISASI HOOK EXPORT ---
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
     edit: null,
     delete: null,
-    import: false, // <-- 4. INISIALISASI STATE
+    import: false, 
   });
 
-  // Cek hak akses
   const canManageAccounts =
     profile?.role === "superadmin" || profile?.role === "leader";
   const canDelete = profile?.role === "superadmin";
 
-  // Fetch data
   const fetchAccounts = async () => {
     setLoading(true);
     try {
@@ -107,16 +107,13 @@ const Accounts = () => {
     fetchAccounts();
   }, []);
 
-  // Efek untuk filtering
   useEffect(() => {
     const results = accounts
       .filter((acc) => {
-        // Filter platform
         if (platformFilter === "all") return true;
         return acc.platform === platformFilter;
       })
       .filter((acc) => {
-        // Filter search term
         return (
           acc.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -125,7 +122,6 @@ const Accounts = () => {
     setFilteredAccounts(results);
   }, [searchTerm, platformFilter, accounts]);
   
-  // Handlers
   const handleEditClick = (account: AccountData) => {
     setDialogs({ ...dialogs, edit: account });
   };
@@ -135,12 +131,11 @@ const Accounts = () => {
   };
   
   const handleSuccess = () => {
-     // <-- 5. UPDATE HANDLER SUKSES
      setDialogs({ add: false, edit: null, delete: null, import: false });
-     fetchAccounts(); // Refresh data
+     fetchAccounts(); 
   }
 
-  // Badge helpers
+  // Helper Badge
   const getAccountStatusBadge = (status: string | null) => {
     switch (status) {
       case "active":
@@ -151,6 +146,15 @@ const Accounts = () => {
         return <Badge variant="destructive">Banned Permanen</Badge>;
       default:
         return <Badge variant="outline">{status || "N/A"}</Badge>;
+    }
+  };
+  
+  const getAccountStatusText = (status: string | null) => {
+    switch (status) {
+      case "active": return "Aktif";
+      case "banned_temporary": return "Banned Sementara";
+      case "banned_permanent": return "Banned Permanen";
+      default: return status || "N/A";
     }
   };
 
@@ -168,6 +172,51 @@ const Accounts = () => {
         return <Badge variant="outline">{status || "N/A"}</Badge>;
     }
   };
+  
+  const getDataStatusText = (status: string | null) => {
+     switch (status) {
+      case "verified": return "Verifikasi Berhasil";
+      case "in_progress": return "Proses Pengajuan";
+      case "rejected": return "Ditolak";
+      case "empty": return "Kosong";
+      default: return status || "N/A";
+    }
+  };
+
+  // --- 4. FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Platform', dataKey: 'platform' },
+      { header: 'Username', dataKey: 'username' },
+      { header: 'Email', dataKey: 'email' },
+      { header: 'No. HP', dataKey: 'phone' },
+      { header: 'Grup', dataKey: 'group_name' },
+      { header: 'Status Akun', dataKey: 'account_status_text' },
+      { header: 'Status Data', dataKey: 'data_status_text' },
+    ];
+    
+    const exportData = filteredAccounts.map(acc => ({
+        ...acc,
+        phone: acc.phone || '-',
+        group_name: acc.groups?.name || '-',
+        account_status_text: getAccountStatusText(acc.account_status),
+        data_status_text: getDataStatusText(acc.data_status),
+    }));
+
+    const options = {
+        filename: 'Daftar_Akun_Affiliate',
+        title: 'Laporan Daftar Akun Affiliate',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
 
   // Summary Cards Data
   const shopeeCount = accounts.filter(a => a.platform === 'shopee').length;
@@ -185,7 +234,6 @@ const Accounts = () => {
               Kelola akun Shopee dan TikTok affiliate.
             </p>
           </div>
-          {/* --- 6. TAMBAHKAN TOMBOL IMPORT --- */}
           {canManageAccounts && (
             <div className="flex gap-2">
               <Button 
@@ -256,7 +304,6 @@ const Accounts = () => {
         <Card>
           <CardHeader>
             <div className="flex flex-col md:flex-row items-center gap-4">
-              {/* Filter Tabs */}
               <Tabs value={platformFilter} onValueChange={setPlatformFilter}>
                 <TabsList>
                   <TabsTrigger value="all">Semua</TabsTrigger>
@@ -273,10 +320,24 @@ const Accounts = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Button variant="outline" className="gap-2" disabled>
-                <Download className="h-4 w-4" />
-                Export (Soon)
-              </Button>
+              {/* --- 5. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2" disabled={isExporting || filteredAccounts.length === 0}>
+                        <Download className="h-4 w-4" />
+                        {isExporting ? 'Mengekspor...' : 'Export'}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                        Export PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                        Export CSV
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {/* ------------------------------------------- */}
             </div>
           </CardHeader>
           <CardContent>
@@ -345,13 +406,16 @@ const Accounts = () => {
                                   Edit Akun
                                 </DropdownMenuItem>
                                 {canDelete && (
-                                  <DropdownMenuItem
-                                    className="text-destructive"
-                                    onClick={() => handleDeleteClick(account)}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Hapus Akun
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => handleDeleteClick(account)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Hapus Akun
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -366,7 +430,6 @@ const Accounts = () => {
         </Card>
       </div>
       
-      {/* Render Dialog Tambah Akun */}
        {canManageAccounts && (
          <AddAccountDialog
            open={dialogs.add}
@@ -375,7 +438,6 @@ const Accounts = () => {
          />
        )}
 
-       {/* Render Dialog Edit Akun */}
        {canManageAccounts && dialogs.edit && (
           <EditAccountDialog
             open={!!dialogs.edit}
@@ -385,7 +447,6 @@ const Accounts = () => {
           />
        )}
        
-       {/* Render Alert Hapus Akun */}
        {canDelete && dialogs.delete && (
           <DeleteAccountAlert
             open={!!dialogs.delete}
@@ -395,7 +456,6 @@ const Accounts = () => {
           />
        )}
 
-      {/* --- 7. RENDER DIALOG IMPORT BARU --- */}
       {canManageAccounts && (
         <BulkImportDialog
           open={dialogs.import}
@@ -403,7 +463,6 @@ const Accounts = () => {
           onSuccess={handleSuccess}
         />
       )}
-      {/* ----------------------------------- */}
 
     </MainLayout>
   );
