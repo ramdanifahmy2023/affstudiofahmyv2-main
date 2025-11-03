@@ -1,23 +1,18 @@
+// src/pages/ProfitLoss.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Download, TrendingUp, TrendingDown, Loader2, DollarSign, Percent } from "lucide-react";
+import { Search, Download, TrendingUp, TrendingDown, Loader2, Percent } from "lucide-react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { cn } from "@/lib/utils"; // <-- PERBAIKAN: Impor 'cn' ditambahkan di sini
+import { cn } from "@/lib/utils";
 
 // Definisi Tipe
 type CashflowData = { type: "income" | "expense"; amount: number; category: string | null; description: string };
@@ -30,9 +25,9 @@ const ProfitLoss = () => {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   const [expenseBreakdown, setExpenseBreakdown] = useState<SummaryItem[]>([]);
-  const [taxRate, setTaxRate] = useState(0.1); // Default 10%
+  const [taxRate, setTaxRate] = useState(0.1); // Default 10% [cite: 121]
   
-  // Cek hak akses
+  // Cek hak akses [cite: 4]
   const canRead = profile?.role === "superadmin" || profile?.role === "admin" || profile?.role === "leader" || profile?.role === "viewer";
   
   // Helper format
@@ -47,24 +42,24 @@ const ProfitLoss = () => {
   // Fetch data Cashflow dan Commission
   const fetchData = async () => {
     setLoading(true);
-    if (!canRead && profile) { // Pastikan profile sudah dimuat
+    if (!canRead && profile) {
         toast.error("Anda tidak memiliki akses untuk melihat halaman ini.");
         setLoading(false);
         return;
     }
 
     try {
-      // 1. Fetch Total Komisi Cair (Pendapatan)
+      // 1. Fetch Total Komisi Cair (Pendapatan) [cite: 120]
       const { data: commsData, error: commsError } = await supabase
         .from("commissions")
         .select(`paid_commission`);
       
       if (commsError) throw commsError;
       
-      const totalPaidCommission = (commsData as CommissionData[]).reduce((sum, c) => sum + c.paid_commission, 0);
+      const totalPaidCommission = (commsData as CommissionData[]).reduce((sum, c) => sum + (c.paid_commission || 0), 0);
       setTotalIncome(totalPaidCommission);
 
-      // 2. Fetch Total Pengeluaran (Cashflow Expense)
+      // 2. Fetch Total Pengeluaran (Cashflow Expense) [cite: 121]
       const { data: cfData, error: cfError } = await supabase
         .from("cashflow")
         .select(`type, amount, category, description`);
@@ -75,7 +70,7 @@ const ProfitLoss = () => {
       const totalExpenses = expenseItems.reduce((sum, item) => sum + item.amount, 0);
       setTotalExpense(totalExpenses);
 
-      // 3. Hitung Breakdown Pengeluaran untuk Chart
+      // 3. Hitung Breakdown Pengeluaran untuk Chart [cite: 125]
       const breakdown: { [key: string]: number } = {
           'Fixed Cost': 0,
           'Variable Cost': 0,
@@ -83,23 +78,23 @@ const ProfitLoss = () => {
       };
 
       expenseItems.forEach(item => {
-        if (item.category === 'fixed') {
+        // Asumsi category di DB cashflow menggunakan 'fixed' / 'variable'
+        if (item.category === 'fixed') { 
             breakdown['Fixed Cost'] += item.amount;
         } else if (item.category === 'variable') {
             breakdown['Variable Cost'] += item.amount;
         } else {
-            // Ini mencakup pengeluaran tanpa kategori (harusnya tidak terjadi jika form Cashflow divalidasi)
             breakdown['Lainnya'] += item.amount; 
         }
       });
       
-      // Filter out 'Lainnya' jika 0
+      // Filter out 'Lainnya' jika 0 dan mapping ke format Recharts
       const chartData: SummaryItem[] = Object.entries(breakdown)
         .filter(([, value]) => value > 0)
         .map(([name, value], index) => ({ 
             name, 
             value,
-            color: `hsl(var(--chart-${index + 1}))`
+            color: `hsl(var(--chart-${index + 1}))` // Menggunakan warna dari tailwind config
         }));
         
       setExpenseBreakdown(chartData);
@@ -114,15 +109,15 @@ const ProfitLoss = () => {
   };
 
   useEffect(() => {
-    if(profile) { // Hanya fetch jika profile sudah ada
+    if(profile) { 
       fetchData();
     }
-  }, [profile]); // Refresh saat profile berubah
+  }, [profile]);
   
   // Perhitungan Laba Rugi
-  const labaKotor = totalIncome - totalExpense;
-  const taxAmount = labaKotor * taxRate;
-  const labaBersih = labaKotor - taxAmount;
+  const labaKotor = totalIncome - totalExpense; // [cite: 121]
+  const taxAmount = labaKotor * taxRate;       // [cite: 121]
+  const labaBersih = labaKotor - taxAmount;     // [cite: 121]
   
   // Data Chart Laba Rugi Sederhana (Bar Chart untuk perbandingan)
   const financialSummaryData = [
@@ -163,8 +158,8 @@ const ProfitLoss = () => {
             <p className="text-muted-foreground">Perhitungan otomatis dari Komisi Cair dan Pengeluaran Cashflow.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">Filter (Soon)</Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" disabled>Filter (Soon)</Button>
+            <Button variant="outline" className="gap-2" disabled>
               <Download className="h-4 w-4" />
               Export PDF/CSV
             </Button>
@@ -227,7 +222,7 @@ const ProfitLoss = () => {
 
         {/* Charts and Tax Calculation */}
         <div className="grid gap-4 md:grid-cols-3">
-          {/* Laba Rugi Bar Chart */}
+          {/* Laba Rugi Bar Chart (Quarterly Comparison Bar Chart) [cite: 124] */}
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Perbandingan Posisi Keuangan</CardTitle>
@@ -263,7 +258,7 @@ const ProfitLoss = () => {
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none flex items-center gap-2">
                     <Percent className="h-4 w-4 text-muted-foreground" />
-                    Tarif Pajak (Perubahan Manual)
+                    Tarif Pajak (Perubahan Manual) [cite: 121]
                 </label>
                 <div className="flex items-center gap-2">
                    <Input
@@ -297,7 +292,7 @@ const ProfitLoss = () => {
           </Card>
         </div>
         
-        {/* Expense Breakdown */}
+        {/* Expense Breakdown (Breakdown Pengeluaran (Pie Chart)) [cite: 125] */}
         <Card>
            <CardHeader>
              <CardTitle>Breakdown Pengeluaran</CardTitle>
@@ -312,7 +307,12 @@ const ProfitLoss = () => {
                         contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "var(--radius)" }}
                         formatter={(value: number) => formatCurrency(value)}
                     />
-                    <Bar dataKey="value" name="Total Pengeluaran" fill="hsl(var(--destructive))" radius={[0, 8, 8, 0]} />
+                    {/* Menggunakan warna dinamis dari state */}
+                    <Bar dataKey="value" name="Total Pengeluaran" fill="hsl(var(--destructive))" radius={[0, 8, 8, 0]}>
+                       {expenseBreakdown.map((entry, index) => (
+                           <Bar key={`bar-${index}`} dataKey="value" fill={entry.color} />
+                       ))}
+                    </Bar>
                 </BarChart>
               </ResponsiveContainer>
            </CardContent>

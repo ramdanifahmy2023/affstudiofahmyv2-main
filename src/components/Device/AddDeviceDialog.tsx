@@ -1,3 +1,5 @@
+// src/components/Device/AddDeviceDialog.tsx
+
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,13 +37,12 @@ const deviceFormSchema = z.object({
   imei: z.string().length(15, { message: "IMEI harus tepat 15 digit." }).regex(/^\d+$/, { message: "IMEI hanya boleh berisi angka." }),
   google_account: z.string().email({ message: "Format email Akun Google tidak valid." }),
   purchase_date: z.date().optional().nullable(),
+  // PERBAIKAN: Tangani empty string ("") dari input optional sebagai `null`
   purchase_price: z.preprocess(
-    (a) => parseFloat(z.string().parse(a)),
+    (a) => (a === "" || a === null || a === undefined ? null : parseFloat(String(a).replace(/[^0-9.]/g, ''))),
     z.number().positive().optional().nullable()
   ),
-  screenshot_url: z.string().url({ message: "Format URL tidak valid." }).optional().nullable(),
-  // Spek menyebut "Merek" dan "Model", tapi skema DB tidak memilikinya.
-  // Saya akan mengikuti skema DB (devices)
+  screenshot_url: z.string().url({ message: "Format URL tidak valid." }).optional().nullable().or(z.literal('')),
 });
 
 type DeviceFormValues = z.infer<typeof deviceFormSchema>;
@@ -62,7 +63,7 @@ export const AddDeviceDialog = ({ open, onOpenChange, onSuccess }: AddDeviceDial
       imei: "",
       google_account: "",
       purchase_date: null,
-      purchase_price: undefined,
+      purchase_price: undefined, // undefined lebih baik untuk input number opsional di form
       screenshot_url: "",
     },
   });
@@ -180,7 +181,7 @@ export const AddDeviceDialog = ({ open, onOpenChange, onSuccess }: AddDeviceDial
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
-                          selected={field.value}
+                          selected={field.value || undefined}
                           onSelect={field.onChange}
                           initialFocus
                         />
@@ -197,7 +198,16 @@ export const AddDeviceDialog = ({ open, onOpenChange, onSuccess }: AddDeviceDial
                   <FormItem>
                     <FormLabel>Harga Beli (Opsional)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="3500000" {...field} onChange={e => field.onChange(e.target.value)} />
+                      {/* PERBAIKAN: Mengikat nilai number/undefined/null ke input yang benar */}
+                      <Input 
+                        type="number" 
+                        placeholder="3500000" 
+                        {...field} 
+                        // Tampilkan string kosong jika nilainya undefined atau null
+                        value={field.value === undefined || field.value === null ? '' : field.value}
+                        // Kirim undefined jika input kosong, atau parse ke float
+                        onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

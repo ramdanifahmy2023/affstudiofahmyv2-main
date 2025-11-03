@@ -41,19 +41,29 @@ import { cn } from "@/lib/utils";
 // Tipe data Role yang valid (sesuai Enum user_role di DB)
 const VALID_TARGET_ROLES = ["staff", "leader", "admin", "viewer", "superadmin"] as const;
 
-// Skema validasi Zod
+// === HELPER UNTUK FORMAT/PARSE (Konsistensi dengan form lain) ===
+const formatCurrencyInput = (value: string | number) => {
+   const numberValue = Number(String(value).replace(/[^0-9]/g, ""));
+   if (isNaN(numberValue) || numberValue === 0) return "0";
+   return new Intl.NumberFormat("id-ID").format(numberValue);
+};
+
+const parseCurrencyInput = (value: string) => {
+   return parseFloat(String(value).replace(/[^0-9]/g, "")) || 0;
+};
+// ===============================================================
+
+// Skema validasi Zod (Menggunakan string input dan parse di onSubmit)
 const kpiFormSchema = z.object({
-  // PERUBAHAN: Ganti employee_id dengan target_role
   target_role: z.enum(VALID_TARGET_ROLES, { message: "Role target wajib dipilih." }),
   target_month: z.date({ required_error: "Bulan target wajib diisi." }),
-  sales_target: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(0, { message: "Target Omset wajib diisi." })
-  ),
-  commission_target: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(0, { message: "Target Komisi wajib diisi." })
-  ),
+  // Gunakan string untuk input yang di-format mata uang
+  sales_target: z.string()
+    .min(1, { message: "Target Omset wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Nilai harus non-negatif." }),
+  commission_target: z.string()
+    .min(1, { message: "Target Komisi wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Nilai harus non-negatif." }),
   attendance_target: z.preprocess(
     (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
     z.number().min(1).max(31, { message: "Target hadir (1-31 hari)." })
@@ -70,25 +80,17 @@ interface SetTargetDialogProps {
 
 export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDialogProps) => {
   const [loading, setLoading] = useState(false);
-  // Hapus state [employees] karena kita tidak lagi menampilkan daftar karyawan
 
   const form = useForm<KpiFormValues>({
     resolver: zodResolver(kpiFormSchema),
     defaultValues: {
-      target_role: "staff", // Default ke staff
+      target_role: "staff", 
       target_month: startOfMonth(new Date()),
-      sales_target: 0,
-      commission_target: 0,
-      attendance_target: 22, // Default
+      sales_target: "0", // Menggunakan string
+      commission_target: "0", // Menggunakan string
+      attendance_target: 22,
     },
   });
-
-  // Helper format mata uang
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
   
   // Reset form saat dibuka
   useEffect(() => {
@@ -96,8 +98,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
       form.reset({
         target_role: "staff",
         target_month: startOfMonth(new Date()),
-        sales_target: 0,
-        commission_target: 0,
+        sales_target: "0",
+        commission_target: "0",
         attendance_target: 22,
       });
     }
@@ -106,12 +108,16 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
   const onSubmit = async (values: KpiFormValues) => {
     setLoading(true);
     toast.info(`Mencari karyawan dengan role '${values.target_role}'...`);
+    
+    // Parse values from string to number saat submit
+    const finalSalesTarget = parseCurrencyInput(values.sales_target);
+    const finalCommissionTarget = parseCurrencyInput(values.commission_target);
 
     try {
       // 1. Ambil SEMUA Employee ID yang memiliki role yang ditargetkan
       const { data: employeeData, error: employeeError } = await supabase
           .from("employees")
-          .select("id, profiles(role)")
+          .select("id, profiles!employees_profile_id_fkey(role)") 
           .eq("profiles.role", values.target_role);
 
       if (employeeError) throw employeeError;
@@ -130,10 +136,9 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
       const kpiPayload = employeeIds.map(empId => ({
         employee_id: empId,
         target_month: targetMonthFormatted,
-        sales_target: values.sales_target,
-        commission_target: values.commission_target,
+        sales_target: finalSalesTarget,
+        commission_target: finalCommissionTarget,
         attendance_target: values.attendance_target,
-        // Actuals dibiarkan default 0 (akan diupdate oleh trigger/proses lain)
       }));
 
       // 3. Lakukan Batch Upsert (Insert/Update)
@@ -234,8 +239,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                     <FormLabel>Target Omset (50%)</FormLabel>
                     <FormControl>
                       <Input type="text" placeholder="50.000.000"
-                       onChange={(e) => field.onChange(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0)}
-                       value={formatCurrency(field.value || 0)}
+                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
+                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -250,8 +255,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                     <FormLabel>Target Komisi (30%)</FormLabel>
                     <FormControl>
                       <Input type="text" placeholder="5.000.000"
-                       onChange={(e) => field.onChange(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0)}
-                       value={formatCurrency(field.value || 0)}
+                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
+                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
                       />
                     </FormControl>
                     <FormMessage />

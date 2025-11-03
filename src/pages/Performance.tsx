@@ -28,13 +28,22 @@ interface EmployeePerformance {
     group: string;
     omset: number; // actual_sales
     commission: number; // actual_commission
-    paidCommission: number; // paid_commission (Perlu lookup tambahan)
+    paidCommission: number; // Placeholder
     attendance: number; // actual_attendance
     kpi: number; // total_kpi
 }
 
-// Data awal (dihapus)
-// const performanceData = [...];
+// Kalkulasi KPI
+const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget: number, attend: number, aTarget: number) => {
+    // Bobot: Omset 50%, Komisi 30%, Absensi 20%
+    const sales_pct = (sTarget > 0) ? (sales / sTarget) * 100 : 0;
+    const commission_pct = (cTarget > 0) ? (comm / cTarget) * 100 : 0;
+    const attendance_pct = (aTarget > 0) ? (attend / aTarget) * 100 : 0;
+    
+    const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
+    
+    return Math.min(total_kpi, 100);
+};
 
 const Performance = () => {
   const { profile } = useAuth();
@@ -42,10 +51,10 @@ const Performance = () => {
   const [performanceData, setPerformanceData] = useState<EmployeePerformance[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   
-  const canRead = profile?.role !== "staff" && profile?.role !== "viewer"; // Asumsi Staff/Viewer tidak CRUD Performance
+  const canRead = profile?.role !== "staff" && profile?.role !== "viewer"; 
 
   const formatCurrency = (amount: number | null) => {
-    if (amount === null) return "Rp 0";
+    if (amount === null || amount === undefined) return "Rp 0";
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
@@ -59,21 +68,15 @@ const Performance = () => {
     return "text-destructive";
   };
   
-  // Kalkulasi KPI (diulang dari KPI.tsx)
-  const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget: number, attend: number, aTarget: number) => {
-      const sales_pct = (sTarget > 0) ? (sales / sTarget) * 100 : 0;
-      const commission_pct = (cTarget > 0) ? (comm / cTarget) * 100 : 0;
-      const attendance_pct = (aTarget > 0) ? (attend / aTarget) * 100 : 0;
-      
-      const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
-      
-      return Math.min(total_kpi, 100);
-  };
-  
   const fetchData = async () => {
     setLoading(true);
+    if (!profile || !canRead) {
+        setLoading(false);
+        return;
+    }
+    
     try {
-        // Ambil data KPI, Employees, dan Group (untuk nama grup)
+        // Ambil data KPI, Employees, dan Group
         const { data: kpiResults, error: kpiError } = await supabase
             .from('kpi_targets')
             .select(`
@@ -88,34 +91,49 @@ const Performance = () => {
                     id,
                     profiles ( full_name ),
                     groups ( name )
-                )
+                ),
+                target_month
             `)
             .order('target_month', { ascending: false });
 
         if (kpiError) throw kpiError;
         
-        const currentMonthData = kpiResults.map((item: any) => ({
-            id: item.id,
-            name: item.employees.profiles?.full_name || "N/A",
-            group: item.employees.groups?.name || "N/A",
-            omset: item.actual_sales || 0,
-            commission: item.actual_commission || 0,
-            paidCommission: 0, // Placeholder, perlu lookup commissions
-            attendance: item.actual_attendance || 0,
-            kpi: calculateTotalKpi(
+        const rawData = kpiResults as any[];
+
+        // Deduplikasi: Hanya simpan KPI terbaru (bulan terbesar) per karyawan
+        const latestKpiMap = new Map<string, EmployeePerformance>();
+        
+        rawData.forEach((item) => {
+             const employeeId = item.employees.id;
+             const calculatedKpi = calculateTotalKpi(
                 item.actual_sales || 0, item.sales_target,
                 item.actual_commission || 0, item.commission_target,
                 item.actual_attendance || 0, item.attendance_target
-            ),
-            // Tambahan untuk detail
-            netCommission: 0, 
-            grossCommission: 0, 
-        }));
+            );
+            
+             const performanceRecord: EmployeePerformance = {
+                id: employeeId,
+                name: item.employees?.profiles?.full_name || "N/A",
+                group: item.employees?.groups?.name || "N/A",
+                omset: item.actual_sales || 0,
+                commission: item.actual_commission || 0,
+                paidCommission: 0, 
+                attendance: item.actual_attendance || 0,
+                kpi: calculatedKpi,
+            };
+            
+            // Cek apakah data ini lebih baru atau belum ada
+            if (!latestKpiMap.has(employeeId)) {
+                latestKpiMap.set(employeeId, performanceRecord);
+            }
+        });
+
+        const uniqueData = Array.from(latestKpiMap.values());
 
         // Sort by KPI (Tertinggi ke Rendah)
-        currentMonthData.sort((a, b) => b.kpi - a.kpi);
+        uniqueData.sort((a, b) => b.kpi - a.kpi);
 
-        setPerformanceData(currentMonthData);
+        setPerformanceData(uniqueData);
 
     } catch (error: any) {
         toast.error("Gagal memuat data Performance: " + error.message);
@@ -163,8 +181,8 @@ const Performance = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">Filter (Soon)</Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" disabled>Filter (Soon)</Button>
+            <Button variant="outline" className="gap-2" disabled>
               <Download className="h-4 w-4" />
               Export (Soon)
             </Button>
@@ -272,7 +290,7 @@ const Performance = () => {
                         )}
                         {filteredData.map((employee, index) => (
                           <TableRow key={employee.id}>
-                            <TableCell className="font-bold">{index + 1}</TableCell>
+                            <TableCell className="font-bold">#{index + 1}</TableCell>
                             <TableCell className="font-medium">{employee.name}</TableCell>
                             <TableCell>
                               <Badge variant="outline">{employee.group}</Badge>
@@ -284,7 +302,7 @@ const Performance = () => {
                               {formatCurrency(employee.commission)}
                             </TableCell>
                             <TableCell className="text-center">
-                                {employee.attendance}
+                                {employee.attendance} hari
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-col items-center gap-1">
@@ -323,7 +341,7 @@ const Performance = () => {
                 .sort((a, b) => b.omset - a.omset)
                 .slice(0, 3)
                 .map((employee, index) => (
-                <div key={index} className="flex items-center gap-4">
+                <div key={employee.id} className="flex items-center gap-4">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm">
                     {index + 1}
                   </div>
@@ -358,7 +376,7 @@ const Performance = () => {
                 .sort((a, b) => b.kpi - a.kpi)
                 .slice(0, 3)
                 .map((employee, index) => (
-                  <div key={index} className="flex items-center gap-4">
+                  <div key={employee.id} className="flex items-center gap-4">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success text-white font-bold text-sm">
                       {index + 1}
                     </div>

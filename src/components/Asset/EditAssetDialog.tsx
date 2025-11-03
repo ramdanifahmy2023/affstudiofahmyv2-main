@@ -38,19 +38,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-// Definisi ulang tipe data (harus sama dengan AssetData di Asset.tsx)
-interface AssetData {
-  id: string;
-  name: string;
-  category: string;
-  purchase_date: string;
-  purchase_price: number;
-  condition: string | null;
-  assigned_to: string | null;
-  notes: string | null;
-}
+// PERBAIKAN: Import formatCurrency dari utils
+import { cn, formatCurrency } from "@/lib/utils"; 
+import { AssetData } from "@/pages/Asset"; // Import tipe data AssetData
 
 // Tipe data untuk dropdown Karyawan
 interface Employee {
@@ -65,17 +55,18 @@ const assetFormSchema = z.object({
   category: z.enum(["Elektronik", "Furniture", "Kendaraan", "Lainnya"], {
     required_error: "Kategori wajib dipilih.",
   }),
-  // Kita ubah purchase_price menjadi harga satuan di form (untuk konsistensi UX)
+  // purchase_price di sini adalah HARGA SATUAN (untuk UI)
   purchase_price: z.preprocess( 
     (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
     z.number().min(1, { message: "Harga satuan wajib diisi." })
   ),
-  quantity: z.preprocess(
+  // Quantity (QTY)
+  quantity: z.preprocess( 
     (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
     z.number().min(1, { message: "Jumlah (Qty) wajib diisi (min. 1)." })
   ).default(1),
   condition: z.enum(["Baru", "Bekas"], { required_error: "Kondisi wajib dipilih." }),
-  assigned_to: z.string().uuid().optional().nullable(),
+  assigned_to: z.string().optional().nullable(), // employee_id (uuid)
   notes: z.string().optional().nullable(),
 });
 
@@ -87,9 +78,6 @@ interface EditAssetDialogProps {
   onSuccess: () => void;
   asset: AssetData | null; // Aset yang akan diedit
 }
-
-// Konstan untuk Harga Satuan (Karena DB hanya menyimpan Total Harga)
-const DUMMY_UNIT_PRICE = 1; // Asumsi QTY selalu 1 untuk aset yang sudah ada, atau kita asumsikan harga satuan = harga total
 
 export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAssetDialogProps) => {
   const [loading, setLoading] = useState(false);
@@ -110,7 +98,7 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
     },
   });
   
-  // Helper format mata uang
+  // Helper format mata uang input
   const formatCurrencyInput = (value: string | number) => {
     const numberValue = Number(String(value).replace(/[^0-9]/g, ""));
     if (isNaN(numberValue)) return "0";
@@ -124,16 +112,14 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
   // Mengisi form saat data aset tersedia
   useEffect(() => {
     if (asset && open) {
-      // Kita asumsikan Qty = 1, jadi Harga Satuan = Harga Total (purchase_price)
-      // Jika di masa depan ada Qty > 1 di DB, logika ini perlu diubah.
       const unitPrice = asset.purchase_price || 0; 
-
+      
       form.reset({
         purchase_date: new Date(asset.purchase_date),
         name: asset.name,
         category: asset.category as AssetFormValues["category"],
         purchase_price: unitPrice, 
-        quantity: DUMMY_UNIT_PRICE, // Set ke 1
+        quantity: 1, 
         condition: asset.condition as AssetFormValues["condition"] || "Baru",
         assigned_to: asset.assigned_to || null,
         notes: asset.notes || "",
@@ -189,7 +175,7 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
           name: values.name,
           category: values.category,
           purchase_price: totalPrice,
-          current_value: totalPrice, 
+          current_value: totalPrice, // Asumsi nilai aset sama dengan harga beli saat di-update
           condition: values.condition,
           assigned_to: values.assigned_to === "none" ? null : values.assigned_to,
           notes: values.notes,
@@ -215,6 +201,12 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
       setLoading(false);
     }
   };
+  
+  // Watch Qty dan Price untuk kalkulasi dinamis
+  const watchQty = form.watch("quantity", 1);
+  const watchPrice = form.watch("purchase_price", 0);
+  const estimatedTotal = watchPrice * watchQty;
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -284,7 +276,7 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                        <Calendar mode="single" selected={field.value || undefined} onSelect={field.onChange} initialFocus />
                       </PopoverContent>
                     </Popover>
                     <FormMessage />
@@ -316,13 +308,26 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
                   <FormItem>
                     <FormLabel>Jumlah (Qty)</FormLabel>
                     <FormControl>
-                      {/* Qty di-disable karena DB hanya menyimpan total harga, jadi Qty dianggap 1 saat edit */}
-                      <Input type="number" min="1" disabled value={field.value} /> 
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        {...field} 
+                        onChange={e => field.onChange(parseInt(e.target.value, 10) || 1)}
+                        value={field.value}
+                      /> 
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </div>
+            
+            <div className="text-sm text-muted-foreground">
+                Total Harga Final (Qty x Harga Satuan): 
+                <span className="font-semibold text-foreground ml-1">
+                    {/* PERBAIKAN: Menggunakan formatCurrency yang sudah diimpor */}
+                    {formatCurrency(estimatedTotal)} 
+                </span>
             </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

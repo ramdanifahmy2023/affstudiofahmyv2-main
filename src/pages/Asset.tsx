@@ -38,7 +38,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 import { id as indonesianLocale } from "date-fns/locale";
 
-// --- PERBAIKAN: Import ResponsiveContainer & Components ---
 import {
   PieChart,
   Pie,
@@ -48,28 +47,30 @@ import {
   ResponsiveContainer, 
 } from "recharts";
 import { AddAssetDialog } from "@/components/Asset/AddAssetDialog";
-import { EditAssetDialog } from "@/components/Asset/EditAssetDialog"; // <-- BARU
-import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert"; // <-- BARU
-// --------------------------------------------------------
+import { EditAssetDialog } from "@/components/Asset/EditAssetDialog"; 
+import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert"; 
+import { cn } from "@/lib/utils";
+
 
 // Tipe data dari Supabase (Query lengkap untuk Edit)
-type AssetData = {
+export type AssetData = {
   id: string;
   name: string;
   category: string;
   purchase_date: string;
   purchase_price: number;
   condition: string | null;
-  assigned_to: string | null; // Kita fetch ini untuk Edit
-  notes: string | null; // Kita fetch ini untuk Edit
+  assigned_to: string | null; 
+  notes: string | null; 
 };
 
-// Tipe untuk data Pie Chart
+// Tipe untuk data Pie Chart [cite: 101]
 type ChartData = {
   name: string;
   value: number;
 };
 
+// Warna Chart [cite: 25]
 const COLORS = [
   "hsl(var(--chart-1))",
   "hsl(var(--chart-2))",
@@ -82,8 +83,11 @@ const Assets = () => {
   const { profile } = useAuth();
   const { toast } = useToast();
   const [assets, setAssets] = useState<AssetData[]>([]);
+  const [filteredAssets, setFilteredAssets] = useState<AssetData[]>([]);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+
 
   // --- State untuk Modal/Dialog ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -104,6 +108,7 @@ const Assets = () => {
   };
   
   const formatDate = (dateString: string) => {
+    if (!dateString) return "-";
     try {
       return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "dd MMM yyyy", { locale: indonesianLocale });
     } catch (e) { return "-"; }
@@ -130,11 +135,17 @@ const Assets = () => {
       if (error) throw error;
       setAssets(data || []);
       
+      const dataForFilter = data || [];
+      
+      // Hitung breakdown untuk Pie Chart [cite: 101]
       const breakdown: { [key: string]: number } = {};
-      (data || []).forEach(asset => {
+      dataForFilter.forEach(asset => {
         breakdown[asset.category] = (breakdown[asset.category] || 0) + 1;
       });
       setChartData(Object.entries(breakdown).map(([name, value]) => ({ name, value })));
+      
+      // Update filtered list (setelah fetch)
+      setFilteredAssets(dataForFilter);
 
     } catch (error: any) {
       toast({
@@ -152,6 +163,16 @@ const Assets = () => {
     fetchAssets();
   }, []);
   
+  // Efek untuk filtering lokal
+  useEffect(() => {
+    const results = assets.filter((asset) =>
+      asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      asset.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredAssets(results);
+  }, [searchTerm, assets]);
+
+
   // --- Fungsi helper untuk buka modal ---
   const handleEditClick = (asset: AssetData) => {
     setSelectedAsset(asset);
@@ -173,8 +194,8 @@ const Assets = () => {
   };
   // -------------------------------------
 
-  const totalValue = assets.reduce((acc, asset) => acc + (asset.purchase_price || 0), 0);
-  const totalItems = assets.length;
+  const totalValue = assets.reduce((acc, asset) => acc + (asset.purchase_price || 0), 0); // [cite: 99]
+  const totalItems = assets.length; // [cite: 100]
 
   return (
     <MainLayout>
@@ -200,7 +221,7 @@ const Assets = () => {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
-                Total Nilai Aset
+                Total Nilai Aset [cite: 99]
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -213,7 +234,7 @@ const Assets = () => {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Archive className="h-4 w-4" />
-                Jumlah Item Aset
+                Jumlah Item Aset [cite: 100]
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -247,7 +268,8 @@ const Assets = () => {
                   <Input
                     placeholder="Cari nama aset..."
                     className="pl-10 w-full"
-                    // TODO: Implement search state
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 <Button variant="outline" className="gap-2 w-full sm:w-auto" disabled>
@@ -275,14 +297,14 @@ const Assets = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {assets.length === 0 && (
+                      {filteredAssets.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center h-24">
-                            Belum ada data aset.
+                            {searchTerm ? "Aset tidak ditemukan." : "Belum ada data aset."}
                           </TableCell>
                         </TableRow>
                       )}
-                      {assets.map((asset) => (
+                      {filteredAssets.map((asset) => (
                         <TableRow key={asset.id}>
                           <TableCell>{formatDate(asset.purchase_date)}</TableCell>
                           <TableCell className="font-medium">{asset.name}</TableCell>
@@ -290,14 +312,16 @@ const Assets = () => {
                             <Badge variant="outline">{asset.category}</Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={asset.condition === "Baru" ? "default" : (asset.condition === "Bekas" ? "secondary" : "outline")}>
+                            <Badge 
+                              variant={asset.condition === "Baru" ? "default" : (asset.condition === "Bekas" ? "secondary" : "outline")}
+                              className={cn(asset.condition === "Baru" ? "bg-green-600 hover:bg-green-600/90" : "")}
+                            >
                               {asset.condition || "-"}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {formatCurrency(asset.purchase_price)}
                           </TableCell>
-                          {/* --- KOLOM ACTIONS DENGAN HANDLER --- */}
                           <TableCell className="text-center">
                             {canManageAssets ? (
                               <DropdownMenu>
@@ -324,7 +348,6 @@ const Assets = () => {
                               <span>-</span>
                             )}
                           </TableCell>
-                          {/* ------------------------- */}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -337,7 +360,7 @@ const Assets = () => {
           {/* Pie Chart */}
           <Card className="lg:col-span-1">
              <CardHeader>
-               <CardTitle>Breakdown Aset by Kategori</CardTitle>
+               <CardTitle>Breakdown Aset by Kategori</CardTitle> [cite: 101]
              </CardHeader>
              <CardContent>
                <ResponsiveContainer width="100%" height={300}>
