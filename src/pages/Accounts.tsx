@@ -5,7 +5,8 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, UserCircle, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+// --- 1. IMPORT ICON BARU ---
+import { Plus, Search, Download, UserCircle, Loader2, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -27,6 +28,8 @@ import { toast } from "sonner";
 import { AddAccountDialog } from "@/Account/AddAccountDialog";
 import { EditAccountDialog } from "@/Account/EditAccountDialog"; 
 import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert"; 
+// --- 2. IMPORT DIALOG BARU ---
+import { BulkImportDialog } from "@/Account/BulkImportDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +52,7 @@ type DialogState = {
   add: boolean;
   edit: AccountData | null;
   delete: AccountData | null;
+  import: boolean; // <-- 3. TAMBAHKAN STATE IMPORT
 };
 
 const Accounts = () => {
@@ -64,6 +68,7 @@ const Accounts = () => {
     add: false,
     edit: null,
     delete: null,
+    import: false, // <-- 4. INISIALISASI STATE
   });
 
   // Cek hak akses
@@ -130,7 +135,8 @@ const Accounts = () => {
   };
   
   const handleSuccess = () => {
-     setDialogs({ add: false, edit: null, delete: null });
+     // <-- 5. UPDATE HANDLER SUKSES
+     setDialogs({ add: false, edit: null, delete: null, import: false });
      fetchAccounts(); // Refresh data
   }
 
@@ -179,11 +185,22 @@ const Accounts = () => {
               Kelola akun Shopee dan TikTok affiliate.
             </p>
           </div>
+          {/* --- 6. TAMBAHKAN TOMBOL IMPORT --- */}
           {canManageAccounts && (
-            <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
-              <Plus className="h-4 w-4" />
-              Tambah Akun
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="gap-2" 
+                onClick={() => setDialogs({ ...dialogs, import: true })}
+              >
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
+              <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
+                <Plus className="h-4 w-4" />
+                Tambah Akun
+              </Button>
+            </div>
           )}
         </div>
 
@@ -377,6 +394,16 @@ const Accounts = () => {
             account={dialogs.delete}
           />
        )}
+
+      {/* --- 7. RENDER DIALOG IMPORT BARU --- */}
+      {canManageAccounts && (
+        <BulkImportDialog
+          open={dialogs.import}
+          onOpenChange={(open) => setDialogs({ ...dialogs, import: open })}
+          onSuccess={handleSuccess}
+        />
+      )}
+      {/* ----------------------------------- */}
 
     </MainLayout>
   );
