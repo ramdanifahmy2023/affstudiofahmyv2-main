@@ -4,21 +4,21 @@ import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // <-- 1. IMPORT BARU
-import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // <-- 1. IMPORT BARU
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"; // <-- 1. IMPORT BARU
-import { Calendar } from "@/components/ui/calendar"; // <-- 1. IMPORT BARU
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Table,
   TableBody,
@@ -45,13 +45,14 @@ import {
   TrendingUp,
   Wallet,
   Download,
-  CalendarIcon, // <-- 1. IMPORT BARU
-  Search, // <-- 1. IMPORT BARU
+  CalendarIcon,
+  Search,
+  Printer, // <-- 1. IMPORT IKON BARU
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, subDays, parseISO } from "date-fns"; // <-- 1. IMPORT BARU
+import { format, subDays, parseISO } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
 
 // Import dialog-dialog
@@ -59,7 +60,7 @@ import { AddCommissionDialog } from "@/components/Commission/AddCommissionDialog
 import { EditCommissionDialog } from "@/components/Commission/EditCommissionDialog";
 import { DeleteCommissionAlert } from "@/components/Commission/DeleteCommissionAlert";
 import { useExport } from "@/hooks/useExport";
-import { cn } from "@/lib/utils"; // <-- 1. IMPORT BARU (untuk Calendar)
+import { cn } from "@/lib/utils";
 
 // Tipe data untuk komisi
 export type CommissionData = {
@@ -74,7 +75,7 @@ export type CommissionData = {
   accounts: {
     id: string;
     username: string;
-    group_id: string | null; // <-- 2. Pastikan group_id ada di tipe
+    group_id: string | null;
   };
 };
 
@@ -109,15 +110,14 @@ const Commissions = () => {
     delete: null,
   });
 
-  // --- 3. STATE BARU UNTUK FILTER ---
   const [filterDateStart, setFilterDateStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterGroup, setFilterGroup] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
-  // ------------------------------------
 
-  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
 
   const canManage =
     profile?.role === "superadmin" ||
@@ -152,7 +152,6 @@ const Commissions = () => {
     return dateString;
   };
 
-  // --- 4. MODIFIKASI FUNGSI FETCH DATA ---
   const fetchCommissions = useCallback(async (
     startDate: string,
     endDate: string,
@@ -161,7 +160,6 @@ const Commissions = () => {
   ) => {
     setLoading(true);
     try {
-      // Gunakan !inner join agar data yang akunnya tidak ada tidak muncul
       let query = supabase
         .from("commissions")
         .select(
@@ -177,17 +175,14 @@ const Commissions = () => {
           accounts!inner ( id, username, group_id )
         `
         )
-        // Filter Tanggal: Berdasarkan TANGGAL MULAI PERIODE
         .gte("period_start", startDate)
         .lte("period_start", endDate)
         .order("period_start", { ascending: false });
 
-      // Filter Grup (via tabel accounts)
       if (groupId !== "all") {
         query = query.eq("accounts.group_id", groupId);
       }
       
-      // Filter Search Term (username akun)
       if (search.trim() !== "") {
          query = query.ilike("accounts.username", `%${search.trim()}%`);
       }
@@ -197,7 +192,6 @@ const Commissions = () => {
       if (error) throw error;
       setCommissions(data as any);
       
-      // Hitung summary HANYA dari data yang terfilter
       const gross = data.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
       const net = data.reduce((acc, c) => acc + (c.net_commission || 0), 0);
       const paid = data.reduce((acc, c) => acc + (c.paid_commission || 0), 0);
@@ -211,16 +205,14 @@ const Commissions = () => {
     } finally {
       setLoading(false);
     }
-  }, []); // <-- useCallback
+  }, []);
 
-  // --- 5. USEEFFECT UNTUK MEMANGGIL FETCH DATA SAAT FILTER BERUBAH ---
   useEffect(() => {
-    if (profile) { // Pastikan profile sudah ada sebelum fetch
+    if (profile) { 
         fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm);
     }
   }, [profile, fetchCommissions, filterDateStart, filterDateEnd, filterGroup, searchTerm]);
 
-  // --- 6. USEEFFECT BARU UNTUK FETCH GROUPS (HANYA SEKALI) ---
   useEffect(() => {
     const fetchGroups = async () => {
         const { data, error } = await supabase.from("groups").select("id, name");
@@ -231,8 +223,8 @@ const Commissions = () => {
     fetchGroups();
   }, []);
   
-  // --- 7. FUNGSI HANDLE EXPORT (TETAP SAMA, KARENA 'commissions' SUDAH TERFILTER) ---
-  const handleExport = (type: 'pdf' | 'csv') => {
+  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Akun', dataKey: 'account_username' },
       { header: 'Periode', dataKey: 'period' },
@@ -244,7 +236,6 @@ const Commissions = () => {
       { header: 'Komisi Cair (Rp)', dataKey: 'paid_commission' },
     ];
     
-    // 'commissions' adalah state yang sudah terfilter oleh fetchData
     const exportData = commissions.map(c => ({
         ...c,
         account_username: c.accounts?.username || 'N/A',
@@ -263,8 +254,11 @@ const Commissions = () => {
     
     if (type === 'pdf') {
         exportToPDF(options);
-    } else {
+    } else if (type === 'csv') {
         exportToCSV(options);
+    } else {
+        // Panggil fungsi printData baru dari hook
+        printData(options); 
     }
   };
 
@@ -290,7 +284,7 @@ const Commissions = () => {
           )}
         </div>
 
-        {/* --- KARTU SUMMARY --- */}
+        {/* KARTU SUMMARY */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -323,7 +317,7 @@ const Commissions = () => {
           </Card>
         </div>
 
-        {/* --- 8. UI FILTER BARU --- */}
+        {/* UI FILTER BARU */}
         <Card>
           <CardHeader>
             <div className="flex flex-col md:flex-row gap-4">
@@ -419,6 +413,7 @@ const Commissions = () => {
                     />
                   </div>
                   {/* Tombol Export */}
+                  {/* --- 4. TAMBAHKAN OPSI CETAK DI SINI --- */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="gap-2" disabled={isExporting || commissions.length === 0}>
@@ -433,8 +428,14 @@ const Commissions = () => {
                         <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
                             Export CSV
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleExport('print')} disabled={isExporting}>
+                            <Printer className="mr-2 h-4 w-4" />
+                            Cetak Halaman
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {/* ------------------------------------- */}
                 </div>
               </div>
             </CardHeader>

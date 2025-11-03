@@ -4,21 +4,21 @@ import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // <-- 1. IMPORT
-import { Label } from "@/components/ui/label"; // <-- 1. IMPORT
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // <-- 1. IMPORT
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"; // <-- 1. IMPORT
-import { Calendar } from "@/components/ui/calendar"; // <-- 1. IMPORT
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Table,
   TableBody,
@@ -47,13 +47,14 @@ import {
   Scale,
   Link as LinkIcon,
   Download,
-  CalendarIcon, // <-- 1. IMPORT
-  Search, // <-- 1. IMPORT
+  CalendarIcon,
+  Search,
+  Printer, // <-- 1. IMPORT IKON BARU
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, subDays, parseISO } from "date-fns"; // <-- 1. IMPORT
+import { format, subDays, parseISO } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { AddTransactionDialog } from "@/components/Cashflow/AddTransactionDialog";
@@ -87,10 +88,9 @@ type DialogState = {
   delete: TransactionData | null;
 };
 
-// --- 2. TIPE DATA BARU ---
+// Tipe data baru
 type Group = { id: string; name: string };
 const allCategories = ["Komisi Cair", "Fix Cost", "Variable Cost", "Lain-lain"];
-// -------------------------
 
 const Cashflow = () => {
   const { profile } = useAuth();
@@ -103,16 +103,15 @@ const Cashflow = () => {
     delete: null,
   });
 
-  // --- 3. STATE BARU UNTUK FILTER ---
   const [filterDateStart, setFilterDateStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterGroup, setFilterGroup] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
-  // ------------------------------------
 
-  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
 
   const canManage = profile && (
     profile.role === "superadmin" ||
@@ -146,7 +145,6 @@ const Cashflow = () => {
     return dateString;
   };
 
-  // --- 4. MODIFIKASI FUNGSI FETCH DATA ---
   const fetchTransactions = useCallback(async (
     startDate: string,
     endDate: string,
@@ -204,14 +202,12 @@ const Cashflow = () => {
     }
   }, []);
 
-  // --- 5. USEEFFECT UNTUK MEMANGGIL FETCH DATA ---
   useEffect(() => {
     if(profile) {
         fetchTransactions(filterDateStart, filterDateEnd, filterGroup, filterCategory, searchTerm);
     }
   }, [profile, fetchTransactions, filterDateStart, filterDateEnd, filterGroup, filterCategory, searchTerm]);
 
-  // --- 6. USEEFFECT UNTUK FETCH GROUPS ---
   useEffect(() => {
     const fetchGroups = async () => {
         const { data, error } = await supabase.from("groups").select("id, name");
@@ -239,7 +235,8 @@ const Cashflow = () => {
     return t.type === activeTab;
   });
   
-  const handleExport = (type: 'pdf' | 'csv') => {
+  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Tanggal', dataKey: 'transaction_date_formatted' },
       { header: 'Tipe', dataKey: 'type' },
@@ -269,8 +266,10 @@ const Cashflow = () => {
     
     if (type === 'pdf') {
         exportToPDF(options);
-    } else {
+    } else if (type === 'csv') {
         exportToCSV(options);
+    } else {
+        printData(options);
     }
   };
 
@@ -286,6 +285,7 @@ const Cashflow = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            {/* --- 4. TAMBAHKAN OPSI CETAK DI SINI --- */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="gap-2" disabled={isExporting || filteredTransactions.length === 0}>
@@ -300,8 +300,14 @@ const Cashflow = () => {
                   <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
                       Export CSV
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleExport('print')} disabled={isExporting}>
+                      <Printer className="mr-2 h-4 w-4" />
+                      Cetak Halaman
+                  </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* ------------------------------------- */}
             {canManage && (
               <Button
                 className="gap-2"
@@ -314,7 +320,7 @@ const Cashflow = () => {
           </div>
         </div>
         
-        {/* --- 7. UI FILTER BARU --- */}
+        {/* UI FILTER BARU */}
         <Card>
             <CardHeader>
                 <CardTitle className="text-lg">Filter Data</CardTitle>
@@ -405,8 +411,6 @@ const Cashflow = () => {
                 </div>
             </CardContent>
         </Card>
-        {/* ------------------------- */}
-
 
         {/* KARTU SUMMARY (Sekarang menampilkan data terfilter) */}
         <div className="grid gap-4 md:grid-cols-3">
