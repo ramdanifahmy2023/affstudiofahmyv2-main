@@ -45,6 +45,21 @@ interface Group {
   name: string;
 }
 
+// === HELPER UNTUK FORMAT/PARSE (Pola yang sama dengan Cashflow/Commission) ===
+const formatCurrencyInput = (value: string | number) => {
+   if (typeof value === 'number') value = value.toString();
+   if (!value) return "";
+   const num = value.replace(/[^0-9]/g, "");
+   if (num === "0") return "0";
+   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
+};
+
+const parseCurrencyInput = (value: string) => {
+   return parseFloat(value.replace(/[^0-9]/g, "")) || 0;
+};
+// ============================================================================
+
+
 // Skema validasi Zod berdasarkan blueprint
 const debtFormSchema = z.object({
   type: z.enum(["debt", "receivable"], {
@@ -55,7 +70,7 @@ const debtFormSchema = z.object({
   // === PERBAIKAN DI SINI: Menyimpan sebagai string mentah, validasi di onSubmit ===
   amount: z.string() 
     .min(1, { message: "Nominal wajib diisi." })
-    .refine((val) => parseFloat(val.replace(/[^0-9]/g, "")) > 0, { message: "Nominal harus lebih dari 0." }),
+    .refine((val) => parseCurrencyInput(val) > 0, { message: "Nominal harus lebih dari 0." }),
   // ==============================================================================
   due_date: z.date().optional().nullable(),
   status: z.enum(["Belum Lunas", "Cicilan", "Lunas"], {
@@ -73,21 +88,6 @@ interface AddDebtDialogProps {
   onSuccess: () => void; // Untuk refresh list
 }
 
-// === HELPER UNTUK FORMAT/PARSE (Pola yang sama dengan Cashflow/Commission) ===
-const formatCurrencyInput = (value: string | number) => {
-   if (typeof value === 'number') value = value.toString();
-   if (!value) return "";
-   const num = value.replace(/[^0-9]/g, "");
-   if (num === "0") return "0";
-   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-};
-
-const parseCurrencyInput = (value: string) => {
-   return value.replace(/[^0-9]/g, "");
-};
-// ============================================================================
-
-
 export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -98,7 +98,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
       type: undefined,
       transaction_date: new Date(),
       counterparty: "",
-      amount: "", // Menggunakan string kosong sebagai default
+      amount: "0", // Menggunakan string kosong sebagai default
       due_date: null,
       status: "Belum Lunas",
       description: "",
@@ -122,7 +122,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
         type: undefined,
         transaction_date: new Date(),
         counterparty: "",
-        amount: "",
+        amount: "0",
         due_date: null,
         status: "Belum Lunas",
         description: "",
@@ -135,7 +135,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
     setLoading(true);
     try {
       // Parse amount string menjadi number di sini
-      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      const finalAmount = parseCurrencyInput(values.amount);
       if (isNaN(finalAmount) || finalAmount <= 0) {
         throw new Error("Nominal tidak valid atau kosong.");
       }
@@ -249,9 +249,9 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
                       <Input 
                         type="text" 
                         placeholder="1.000.000"
-                        // --- GUNAKAN HELPER BARU ---
+                        // --- PERBAIKAN: Gunakan string mentah di onChange ---
                         value={formatCurrencyInput(field.value)}
-                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        onChange={e => field.onChange(e.target.value)}
                         // -------------------------
                       />
                     </FormControl>

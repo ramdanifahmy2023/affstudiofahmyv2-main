@@ -274,12 +274,13 @@ export const AddDebtReceivableDialog = ({
                   <FormItem>
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
-                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input 
                         type="text" 
                         placeholder="1.000.000"
                         value={formatCurrencyInput(field.value)}
+                        // --- PERBAIKAN: Gunakan string mentah di onChange ---
                         onChange={e => field.onChange(e.target.value)}
+                        // -------------------------
                       />
                     </FormControl>
                     <FormMessage />

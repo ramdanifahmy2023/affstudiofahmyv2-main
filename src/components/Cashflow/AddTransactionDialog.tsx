@@ -224,11 +224,12 @@ export const AddTransactionDialog = ({ open, onOpenChange, onSuccess }: AddTrans
                   <FormItem>
                     <FormLabel>Nominal</FormLabel>
                     <FormControl>
-                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input 
                         placeholder="Rp 0" 
                         value={formatCurrencyInput(field.value)}
+                        // --- 4. GUNAKAN STRING MENTAH DI ONCHANGE ---
                         onChange={e => field.onChange(e.target.value)}
+                        // ------------------------------------------
                       />
                     </FormControl>
                     <FormMessage />

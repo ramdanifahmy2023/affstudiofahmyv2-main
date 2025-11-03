@@ -241,8 +241,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                     <FormLabel>Target Omset (50%)</FormLabel>
                     <FormControl>
                       <Input type="text" placeholder="50.000.000"
-                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
-                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
+                       onChange={(e) => field.onChange(e.target.value)}
+                       value={formatCurrencyInput(field.value)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -257,8 +257,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                     <FormLabel>Target Komisi (30%)</FormLabel>
                     <FormControl>
                       <Input type="text" placeholder="5.000.000"
-                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
-                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
+                       onChange={(e) => field.onChange(e.target.value)}
+                       value={formatCurrencyInput(field.value)}
                       />
                     </FormControl>
                     <FormMessage />

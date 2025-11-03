@@ -250,7 +250,9 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
                       <Input 
                         placeholder="Rp 0" 
                         value={formatCurrencyInput(field.value)}
+                        // --- GUNAKAN STRING MENTAH DI ONCHANGE ---
                         onChange={e => field.onChange(e.target.value)}
+                        // ------------------------------------------
                       />
                     </FormControl>
                     <FormMessage />

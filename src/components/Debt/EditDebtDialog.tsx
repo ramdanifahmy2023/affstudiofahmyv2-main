@@ -252,10 +252,11 @@ export const EditDebtDialog = ({ open, onOpenChange, onSuccess, debt }: EditDebt
                   <FormItem>
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
-                      {/* --- 4. GUNAKAN HELPER BARU --- */}
                       <Input type="text" placeholder="1000000"
                        value={formatCurrencyInput(field.value)}
+                       // --- PERBAIKAN: Gunakan string mentah di onChange ---
                        onChange={e => field.onChange(e.target.value)}
+                       // ----------------------------------------------------
                       />
                     </FormControl>
                     <FormMessage />
