@@ -1,12 +1,26 @@
 // src/pages/DebtReceivable.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // <-- TAMBAHAN
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // <-- TAMBAHAN
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Download, Loader2, ArrowUpRight, ArrowDownLeft, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Download, Loader2, ArrowUpRight, ArrowDownLeft, MoreHorizontal, Pencil, Trash2, CalendarIcon } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -20,19 +34,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
 import { AddDebtReceivableDialog } from "@/components/DebtReceivable/AddDebtReceivableDialog"; 
 import { EditDebtDialog } from "@/components/Debt/EditDebtDialog"; 
 import { DeleteDebtAlert } from "@/components/Debt/DeleteDebtAlert"; 
 import { cn } from "@/lib/utils";
-import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
+import { useExport } from "@/hooks/useExport"; 
 
 // Tipe data dari Supabase
 export type DebtData = {
@@ -56,15 +70,27 @@ type DialogState = {
   delete: DebtData | null;
 };
 
+// Tipe data baru untuk filter
+type Group = { id: string; name: string };
+const STATUSES = ["Belum Lunas", "Cicilan", "Lunas"]
+
 const DebtReceivable = () => {
   const { profile } = useAuth();
   const [data, setData] = useState<DebtData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"debt" | "receivable">("debt");
-  const [searchTerm, setSearchTerm] = useState("");
   
-  // --- 3. INISIALISASI HOOK EXPORT ---
-  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  // --- STATE FILTER BARU ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
+  const [filterDateStart, setFilterDateStart] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
+  // -------------------------
+  
+  // INISIALISASI HOOK EXPORT
+  const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
   
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
@@ -100,10 +126,15 @@ const DebtReceivable = () => {
     return dateString; // Format YYYY-MM-DD
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (
+    groupId: string, 
+    status: string,
+    startDate: string,
+    endDate: string,
+  ) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("debt_receivable")
         .select(`
           id,
@@ -117,7 +148,18 @@ const DebtReceivable = () => {
           group_id,
           groups ( name, id )
         `)
+        .gte("created_at", startDate)
+        .lte("created_at", endDate)
         .order("created_at", { ascending: false });
+        
+      if (groupId !== 'all') {
+          query = query.eq('group_id', groupId);
+      }
+      if (status !== 'all') {
+          query = query.eq('status', status);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setData(data as any);
@@ -127,10 +169,22 @@ const DebtReceivable = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
+  // --- useEffect untuk memicu fetch data saat filter/tab berubah ---
   useEffect(() => {
-    fetchData();
+    fetchData(filterGroup, filterStatus, filterDateStart, filterDateEnd);
+  }, [fetchData, filterGroup, filterStatus, filterDateStart, filterDateEnd]);
+  
+  // --- useEffect untuk mengambil daftar group ---
+  useEffect(() => {
+    const fetchGroups = async () => {
+        const { data, error } = await supabase.from("groups").select("id, name");
+        if (data) {
+            setAvailableGroups(data);
+        }
+    };
+    fetchGroups();
   }, []);
 
   // Pisahkan data untuk tabel dan summary
@@ -145,6 +199,7 @@ const DebtReceivable = () => {
       t.counterparty.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Filter untuk summary (hanya status Belum Lunas dan Cicilan)
   const totalDebt = debts.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
   const totalReceivable = receivables.filter(s => s.status === 'Belum Lunas' || s.status === 'Cicilan').reduce((sum, item) => sum + item.amount, 0);
   const netPosition = totalReceivable - totalDebt;
@@ -162,8 +217,8 @@ const DebtReceivable = () => {
     }
   };
   
-  // --- 4. FUNGSI HANDLE EXPORT ---
-  const handleExport = (type: 'pdf' | 'csv') => {
+  // FUNGSI HANDLE EXPORT
+  const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Tanggal Dibuat', dataKey: 'created_at_formatted' },
       { header: 'Pihak Terkait', dataKey: 'counterparty' },
@@ -196,8 +251,10 @@ const DebtReceivable = () => {
     
     if (type === 'pdf') {
         exportToPDF(options);
-    } else {
+    } else if (type === 'csv') {
         exportToCSV(options);
+    } else {
+        printData(options);
     }
   };
   
@@ -220,7 +277,7 @@ const DebtReceivable = () => {
   
   const handleSuccess = () => {
      setDialogs({ ...dialogs, add: false, edit: null, delete: null });
-     fetchData(); 
+     fetchData(filterGroup, filterStatus, filterDateStart, filterDateEnd); 
   }
 
   const renderTable = (items: DebtData[]) => (
@@ -357,6 +414,94 @@ const DebtReceivable = () => {
           </Card>
         </div>
 
+        {/* --- UI FILTER (TAMBAHAN) --- */}
+        <Card>
+          <CardHeader>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               {/* Filter Tanggal Mulai */}
+                <div className="space-y-2">
+                    <Label htmlFor="date-start">Tanggal Mulai</Label>
+                    <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                        id="date-start"
+                        variant={"outline"}
+                        className={cn("w-full justify-start text-left font-normal", !filterDateStart && "text-muted-foreground")}
+                        >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {filterDateStart ? format(parseISO(filterDateStart), "PPP") : <span>Pilih tanggal</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                        mode="single"
+                        selected={parseISO(filterDateStart)}
+                        onSelect={(date) => date && setFilterDateStart(format(date, "yyyy-MM-dd"))}
+                        initialFocus
+                        />
+                    </PopoverContent>
+                    </Popover>
+                </div>
+                
+                {/* Filter Tanggal Selesai */}
+                <div className="space-y-2">
+                    <Label htmlFor="date-end">Tanggal Selesai</Label>
+                    <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                        id="date-end"
+                        variant={"outline"}
+                        className={cn("w-full justify-start text-left font-normal", !filterDateEnd && "text-muted-foreground")}
+                        >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {filterDateEnd ? format(parseISO(filterDateEnd), "PPP") : <span>Pilih tanggal</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                        mode="single"
+                        selected={parseISO(filterDateEnd)}
+                        onSelect={(date) => date && setFilterDateEnd(format(date, "yyyy-MM-dd"))}
+                        initialFocus
+                        />
+                    </PopoverContent>
+                    </Popover>
+                </div>
+              {/* Filter Grup */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-group">Group</Label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group" className="w-full">
+                    <SelectValue placeholder="Pilih Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Group</SelectItem>
+                    {availableGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+               {/* Filter Status */}
+              <div className="space-y-2">
+                <Label htmlFor="filter-status">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger id="filter-status" className="w-full">
+                    <SelectValue placeholder="Semua Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    {STATUSES.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        {/* ----------------------------- */}
+
         {/* Tabs and Table */}
         <Card>
           <CardHeader>
@@ -376,7 +521,7 @@ const DebtReceivable = () => {
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  {/* --- 5. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
+                  {/* TOMBOL EXPORT (SUDAH KITA SIAPKAN) */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="gap-2" disabled={isExporting || (activeTab === 'debt' ? debts.length === 0 : receivables.length === 0)}>
@@ -393,7 +538,6 @@ const DebtReceivable = () => {
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {/* ------------------------------------------- */}
                 </div>
               </div>
             </Tabs>
