@@ -1,3 +1,5 @@
+// src/pages/Login.tsx
+
 import React, { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -16,7 +18,7 @@ const LoginPage: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // 3. Redirect ke dashboard setelah login berhasil
+  // Redirect ke dashboard setelah login berhasil
   if (!isLoading && user) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -35,42 +37,45 @@ const LoginPage: React.FC = () => {
       return;
     }
 
-    // 2. Integrasi dengan Supabase Auth
-    const { error } = await signIn(email, password);
+    try {
+        // PERBAIKAN KRITIS: Tidak lagi menggunakan destructuring,
+        // cukup panggil signIn. Jika gagal, error akan ditangkap di block catch.
+        await signIn(email, password);
+        
+        // Hanya jika berhasil:
+        toast({
+            title: "Login Berhasil 🎉",
+            description: "Anda berhasil masuk ke FAHMYID Digital Marketing System.",
+            duration: 2000,
+        });
+        // Navigasi akan dihandle oleh Navigate di luar fungsi ini setelah state user terupdate
     
-    setIsSubmitting(false);
+    } catch (error: any) {
+        let errorMessage = "Terjadi kesalahan saat login. Silakan coba lagi.";
+        
+        if (error.message && (error.message.includes("Invalid login credentials") || error.message.includes("invalid_grant"))) {
+            errorMessage = "Email atau Password salah. Mohon periksa kembali.";
+        } else if (error.message && error.message.includes("Email not confirmed")) {
+            errorMessage = "Akun Anda belum terverifikasi. Mohon cek email Anda.";
+        } else if (error.message && error.message.includes("User not found")) {
+            errorMessage = "Akun tidak ditemukan. Silakan hubungi Superadmin.";
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
 
-    if (error) {
-      let errorMessage = "Terjadi kesalahan saat login. Silakan coba lagi.";
-      
-      // 4. Error handling yang user-friendly dalam Bahasa Indonesia
-      if (error.includes("Invalid login credentials") || error.includes("invalid_grant")) {
-        errorMessage = "Email atau Password salah. Mohon periksa kembali.";
-      } else if (error.includes("Email not confirmed")) {
-        errorMessage = "Akun Anda belum terverifikasi. Mohon cek email Anda.";
-      } else if (error.includes("User not found")) {
-        errorMessage = "Akun tidak ditemukan. Silakan hubungi Superadmin.";
-      }
+        toast({
+            title: "Login Gagal 🔴",
+            description: errorMessage,
+            variant: "destructive",
+        });
 
-      toast({
-        title: "Login Gagal 🔴",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } else {
-      // Login successful, redirect handled by Navigate
-      toast({
-        title: "Login Berhasil 🎉",
-        description: "Anda berhasil masuk ke FAHMYID Digital Marketing System.",
-        duration: 2000,
-      });
-      navigate("/dashboard", { replace: true });
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
-      {/* 1. Login page dengan form email & password */}
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Zap className="h-10 w-10 text-primary mx-auto mb-2" />

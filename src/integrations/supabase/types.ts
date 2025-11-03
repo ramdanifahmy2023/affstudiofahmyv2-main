@@ -1,3 +1,5 @@
+// types.ts (DARI INTEGRASI/SUPABASE/TYPES.TS)
+
 export type Json =
   | string
   | number
@@ -315,39 +317,54 @@ export type Database = {
       }
       daily_reports: {
         Row: {
+          account_id: string | null; // <-- BARU
           closing_balance: number
           created_at: string
+          device_id: string | null; // <-- BARU
           employee_id: string
           id: string
+          kategori_produk: string | null; // <-- BARU
+          live_status: string | null; // <-- BARU
           notes: string | null
           opening_balance: number | null
           report_date: string
+          shift_number: string | null; // <-- BARU
           shift_status: Database["public"]["Enums"]["shift_status"]
           submitted_at: string | null
           total_sales: number
           updated_at: string
         }
         Insert: {
+          account_id?: string | null; // <-- BARU
           closing_balance?: number
           created_at?: string
+          device_id?: string | null; // <-- BARU
           employee_id: string
           id?: string
+          kategori_produk?: string | null; // <-- BARU
+          live_status?: string | null; // <-- BARU
           notes?: string | null
           opening_balance?: number | null
           report_date?: string
+          shift_number?: string | null; // <-- BARU
           shift_status: Database["public"]["Enums"]["shift_status"]
           submitted_at?: string | null
           total_sales?: number
           updated_at?: string
         }
         Update: {
+          account_id?: string | null; // <-- BARU
           closing_balance?: number
           created_at?: string
+          device_id?: string | null; // <-- BARU
           employee_id?: string
           id?: string
+          kategori_produk?: string | null; // <-- BARU
+          live_status?: string | null; // <-- BARU
           notes?: string | null
           opening_balance?: number | null
           report_date?: string
+          shift_number?: string | null; // <-- BARU
           shift_status?: Database["public"]["Enums"]["shift_status"]
           submitted_at?: string | null
           total_sales?: number

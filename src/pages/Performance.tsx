@@ -1,8 +1,11 @@
+// src/pages/Performance.tsx
+
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Download, TrendingUp } from "lucide-react";
+import { Search, Download, TrendingUp, MoreHorizontal, Loader2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -13,42 +16,36 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+// Tipe data gabungan untuk tabel
+interface EmployeePerformance {
+    id: string;
+    name: string;
+    group: string;
+    omset: number; // actual_sales
+    commission: number; // actual_commission
+    paidCommission: number; // paid_commission (Perlu lookup tambahan)
+    attendance: number; // actual_attendance
+    kpi: number; // total_kpi
+}
+
+// Data awal (dihapus)
+// const performanceData = [...];
 
 const Performance = () => {
-  const performanceData = [
-    {
-      name: "John Doe",
-      group: "Group A",
-      omset: 45000000,
-      grossCommission: 18000000,
-      netCommission: 14400000,
-      paidCommission: 12000000,
-      attendance: 22,
-      kpi: 95,
-    },
-    {
-      name: "Jane Smith",
-      group: "Group B",
-      omset: 38000000,
-      grossCommission: 15200000,
-      netCommission: 12160000,
-      paidCommission: 10000000,
-      attendance: 21,
-      kpi: 88,
-    },
-    {
-      name: "Mike Johnson",
-      group: "Group A",
-      omset: 32000000,
-      grossCommission: 12800000,
-      netCommission: 10240000,
-      paidCommission: 8500000,
-      attendance: 20,
-      kpi: 82,
-    },
-  ];
+  const { profile } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [performanceData, setPerformanceData] = useState<EmployeePerformance[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  const canRead = profile?.role !== "staff" && profile?.role !== "viewer"; // Asumsi Staff/Viewer tidak CRUD Performance
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null) return "Rp 0";
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
@@ -58,9 +55,102 @@ const Performance = () => {
 
   const getKPIColor = (kpi: number) => {
     if (kpi >= 90) return "text-success";
-    if (kpi >= 75) return "text-warning";
+    if (kpi >= 70) return "text-warning";
     return "text-destructive";
   };
+  
+  // Kalkulasi KPI (diulang dari KPI.tsx)
+  const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget: number, attend: number, aTarget: number) => {
+      const sales_pct = (sTarget > 0) ? (sales / sTarget) * 100 : 0;
+      const commission_pct = (cTarget > 0) ? (comm / cTarget) * 100 : 0;
+      const attendance_pct = (aTarget > 0) ? (attend / aTarget) * 100 : 0;
+      
+      const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
+      
+      return Math.min(total_kpi, 100);
+  };
+  
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+        // Ambil data KPI, Employees, dan Group (untuk nama grup)
+        const { data: kpiResults, error: kpiError } = await supabase
+            .from('kpi_targets')
+            .select(`
+                id,
+                sales_target,
+                commission_target,
+                attendance_target,
+                actual_sales,
+                actual_commission,
+                actual_attendance,
+                employees (
+                    id,
+                    profiles ( full_name ),
+                    groups ( name )
+                )
+            `)
+            .order('target_month', { ascending: false });
+
+        if (kpiError) throw kpiError;
+        
+        const currentMonthData = kpiResults.map((item: any) => ({
+            id: item.id,
+            name: item.employees.profiles?.full_name || "N/A",
+            group: item.employees.groups?.name || "N/A",
+            omset: item.actual_sales || 0,
+            commission: item.actual_commission || 0,
+            paidCommission: 0, // Placeholder, perlu lookup commissions
+            attendance: item.actual_attendance || 0,
+            kpi: calculateTotalKpi(
+                item.actual_sales || 0, item.sales_target,
+                item.actual_commission || 0, item.commission_target,
+                item.actual_attendance || 0, item.attendance_target
+            ),
+            // Tambahan untuk detail
+            netCommission: 0, 
+            grossCommission: 0, 
+        }));
+
+        // Sort by KPI (Tertinggi ke Rendah)
+        currentMonthData.sort((a, b) => b.kpi - a.kpi);
+
+        setPerformanceData(currentMonthData);
+
+    } catch (error: any) {
+        toast.error("Gagal memuat data Performance: " + error.message);
+        console.error(error);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile) fetchData();
+  }, [profile]);
+  
+  // Filter berdasarkan search term
+  const filteredData = performanceData.filter(e => 
+    e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    e.group.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  // Summary Calculation
+  const totalOmsetTeam = performanceData.reduce((sum, e) => sum + e.omset, 0);
+  const totalCommissionTeam = performanceData.reduce((sum, e) => sum + e.commission, 0);
+  const avgKpi = performanceData.length > 0 ? performanceData.reduce((sum, e) => sum + e.kpi, 0) / performanceData.length : 0;
+  
+  if (!canRead) {
+    return (
+      <MainLayout>
+        <div className="flex flex-col justify-center items-center h-[calc(100vh-100px)]">
+             <h1 className="text-2xl font-bold">Akses Ditolak</h1>
+             <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat halaman ini.</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
 
   return (
     <MainLayout>
@@ -73,10 +163,10 @@ const Performance = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">Filter</Button>
+            <Button variant="outline">Filter (Soon)</Button>
             <Button variant="outline" className="gap-2">
               <Download className="h-4 w-4" />
-              Export
+              Export (Soon)
             </Button>
           </div>
         </div>
@@ -90,40 +180,48 @@ const Performance = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Rp 115M</div>
-              <p className="text-xs text-success mt-1">+12.5% from last month</p>
+              <div className="text-2xl font-bold">
+                 {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : formatCurrency(totalOmsetTeam)}
+              </div>
+              <p className="text-xs text-success mt-1">+Data KPI Aktual</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Avg Commission
+                Total Commission
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Rp 46M</div>
-              <p className="text-xs text-success mt-1">+8.2% from last month</p>
+              <div className="text-2xl font-bold">
+                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : formatCurrency(totalCommissionTeam)}
+              </div>
+              <p className="text-xs text-success mt-1">+Data KPI Aktual</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Avg Attendance
+                Total Karyawan
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">21 days</div>
-              <p className="text-xs text-muted-foreground mt-1">95% attendance rate</p>
+              <div className="text-2xl font-bold">
+                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : performanceData.length}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Total Karyawan dengan Target KPI</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Team KPI
+                Team KPI Avg
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-success">88%</div>
+              <div className={cn("text-2xl font-bold", getKPIColor(avgKpi))}>
+                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : `${avgKpi.toFixed(1)}%`}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">Overall achievement</p>
             </CardContent>
           </Card>
@@ -138,76 +236,93 @@ const Performance = () => {
                 <Input
                   placeholder="Search employees..."
                   className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Group</TableHead>
-                  <TableHead className="text-right">Total Omset</TableHead>
-                  <TableHead className="text-right">Komisi Kotor</TableHead>
-                  <TableHead className="text-right">Komisi Bersih</TableHead>
-                  <TableHead className="text-right">Komisi Cair</TableHead>
-                  <TableHead className="text-center">Absensi</TableHead>
-                  <TableHead className="text-center">KPI %</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {performanceData.map((employee, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{employee.group}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(employee.omset)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(employee.grossCommission)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(employee.netCommission)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(employee.paidCommission)}
-                    </TableCell>
-                    <TableCell className="text-center">{employee.attendance}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col items-center gap-1">
-                        <span className={`font-bold ${getKPIColor(employee.kpi)}`}>
-                          {employee.kpi}%
-                        </span>
-                        <Progress value={employee.kpi} className="w-16 h-1.5" />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm">
-                        Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+             {loading ? (
+                 <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                 </div>
+             ) : (
+                <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Rank</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Group</TableHead>
+                          <TableHead className="text-right">Omset Aktual</TableHead>
+                          <TableHead className="text-right">Komisi Aktual</TableHead>
+                          <TableHead className="text-center">Absensi Aktual</TableHead>
+                          <TableHead className="text-center">KPI %</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredData.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
+                                    Tidak ada data performance ditemukan.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                        {filteredData.map((employee, index) => (
+                          <TableRow key={employee.id}>
+                            <TableCell className="font-bold">{index + 1}</TableCell>
+                            <TableCell className="font-medium">{employee.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{employee.group}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(employee.omset)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(employee.commission)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                                {employee.attendance}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`font-bold ${getKPIColor(employee.kpi)}`}>
+                                  {employee.kpi.toFixed(1)}%
+                                </span>
+                                <Progress value={employee.kpi} className="w-16 h-1.5" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm" disabled>
+                                Details
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                </div>
+             )}
           </CardContent>
         </Card>
 
-        {/* Top Performers */}
+        {/* Top Performers (Menggunakan data real) */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-primary" />
-                Top Performers - Sales
+                Top Performers - Omset
               </CardTitle>
+              <CardDescription>Berdasarkan Omset Aktual.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {performanceData.slice(0, 3).map((employee, index) => (
+              {filteredData
+                .sort((a, b) => b.omset - a.omset)
+                .slice(0, 3)
+                .map((employee, index) => (
                 <div key={index} className="flex items-center gap-4">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm">
                     {index + 1}
@@ -216,7 +331,7 @@ const Performance = () => {
                     <p className="font-medium">{employee.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <Progress
-                        value={(employee.omset / 50000000) * 100}
+                        value={(employee.omset / (totalOmsetTeam || 1)) * 100 * 2} // Skala relatif
                         className="flex-1"
                       />
                       <span className="text-xs text-muted-foreground w-20 text-right">
@@ -226,6 +341,7 @@ const Performance = () => {
                   </div>
                 </div>
               ))}
+              {filteredData.length === 0 && <p className="text-muted-foreground">Tidak ada data untuk peringkat.</p>}
             </CardContent>
           </Card>
 
@@ -235,9 +351,10 @@ const Performance = () => {
                 <TrendingUp className="h-5 w-5 text-success" />
                 Top Performers - KPI
               </CardTitle>
+              <CardDescription>Berdasarkan Total KPI Aktual.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[...performanceData]
+              {filteredData
                 .sort((a, b) => b.kpi - a.kpi)
                 .slice(0, 3)
                 .map((employee, index) => (
@@ -250,12 +367,13 @@ const Performance = () => {
                       <div className="flex items-center gap-2 mt-1">
                         <Progress value={employee.kpi} className="flex-1" />
                         <span className="text-xs text-muted-foreground w-12 text-right">
-                          {employee.kpi}%
+                          {employee.kpi.toFixed(1)}%
                         </span>
                       </div>
                     </div>
                   </div>
                 ))}
+              {filteredData.length === 0 && <p className="text-muted-foreground">Tidak ada data untuk peringkat.</p>}
             </CardContent>
           </Card>
         </div>
