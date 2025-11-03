@@ -8,56 +8,65 @@ import {
   Smartphone,
   UserCircle,
   FileText,
-  TrendingUp, // Digunakan untuk Laba Rugi
-  DollarSign, // Digunakan untuk Commissions (tetap)
-  Wallet, // Digunakan untuk Cashflow (tetap)
+  TrendingUp, 
+  DollarSign, 
+  Wallet, 
   Package,
-  FileSpreadsheet, // Digunakan untuk Assets (tetap)
-  Target, // Digunakan untuk KPI (tetap)
-  BookOpen, // Digunakan untuk Knowledge (tetap)
-  Settings,
+  FileSpreadsheet, 
+  Target, 
+  BookOpen, 
+  Scale, 
   LogOut,
-  Archive,
-  Scale, // Digunakan untuk Debt & Receivable
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+// Definisi peran yang diizinkan untuk Management/Financial (Semua kecuali Staff)
+const MANAGEMENT_ROLES = ["superadmin", "leader", "admin", "viewer"];
+const ALL_ROLES = ["superadmin", "leader", "admin", "staff", "viewer"];
+
 interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: string[];
+  // Roles: Jika tidak didefinisikan, artinya SEMUA ROLE memiliki akses.
+  // Jika didefinisikan, hanya role di dalam array yang punya akses.
+  roles?: string[]; 
 }
 
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Performance", href: "/performance", icon: TrendingUp },
+  // RESTRICTED PAGES (Hanya untuk Management, Admin, Viewer)
+  { title: "Performance", href: "/performance", icon: TrendingUp, roles: MANAGEMENT_ROLES },
+  { title: "Commissions", href: "/commissions", icon: DollarSign, roles: MANAGEMENT_ROLES }, 
+  { title: "Cashflow", href: "/cashflow", icon: Wallet, roles: MANAGEMENT_ROLES },
+  { title: "Assets", href: "/assets", icon: FileSpreadsheet, roles: MANAGEMENT_ROLES },
+  { title: "Debt & Receivable", href: "/debt-receivable", icon: Scale, roles: MANAGEMENT_ROLES }, 
+  { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp, roles: MANAGEMENT_ROLES }, 
+  { title: "KPI Targets", href: "/kpi", icon: Target, roles: MANAGEMENT_ROLES },
+  { title: "Employees", href: "/employees", icon: Users, roles: MANAGEMENT_ROLES },
+  { title: "Devices", href: "/devices", icon: Smartphone, roles: MANAGEMENT_ROLES },
+  { title: "Accounts", href: "/accounts", icon: UserCircle, roles: MANAGEMENT_ROLES },
+  { title: "Groups", href: "/groups", icon: Package, roles: MANAGEMENT_ROLES },
+
+  // STAFF PAGES
   { title: "Daily Report", href: "/daily-report", icon: FileText, roles: ["staff"] },
-  { title: "Attendance", href: "/attendance", icon: UserCircle },
-  { title: "Commissions", href: "/commissions", icon: DollarSign }, 
-  { title: "Cashflow", href: "/cashflow", icon: Wallet },
-  { title: "Assets", href: "/assets", icon: FileSpreadsheet },
-  // PERBAIKAN: Mengganti ikon agar lebih logis
-  { title: "Debt & Receivable", href: "/debt-receivable", icon: Scale }, // Menggunakan Scale (Timbangan)
-  { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp }, // Menggunakan TrendingUp (Hasil Finansial)
-  // AKHIR PERBAIKAN
-  { title: "KPI Targets", href: "/kpi", icon: Target },
-  { title: "Employees", href: "/employees", icon: Users },
-  { title: "Devices", href: "/devices", icon: Smartphone },
-  { title: "Accounts", href: "/accounts", icon: UserCircle },
-  { title: "Groups", href: "/groups", icon: Package },
-  { title: "SOP & Knowledge", href: "/knowledge", icon: BookOpen },
+  { title: "Attendance", href: "/attendance", icon: UserCircle, roles: ALL_ROLES }, 
+  { title: "SOP & Knowledge", href: "/knowledge", icon: BookOpen, roles: ALL_ROLES },
 ];
 
 export const Sidebar = () => {
   const location = useLocation();
   const { profile, signOut } = useAuth();
+  const userRole = profile?.role;
 
   const filteredNavItems = navItems.filter((item) => {
-    if (!item.roles) return true;
-    return item.roles.includes(profile?.role || "");
+    // 1. Jika tidak ada roles yang didefinisikan (e.g. Dashboard), selalu tampilkan.
+    if (!item.roles) return true; 
+
+    // 2. Jika roles didefinisikan, periksa apakah peran pengguna termasuk di dalamnya.
+    return item.roles.includes(userRole || "");
   });
 
   return (
@@ -70,7 +79,7 @@ export const Sidebar = () => {
         <nav className="space-y-1 p-4">
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.href;
+            const isActive = location.pathname.startsWith(item.href) && item.href !== "/"; // Perbaikan cek aktif
 
             return (
               <Link key={item.href} to={item.href}>
@@ -104,6 +113,15 @@ export const Sidebar = () => {
             </p>
           </div>
         </div>
+        <Link to="/profile">
+            <Button
+              variant="outline"
+              className="w-full gap-2 mb-2"
+            >
+              <Users className="h-4 w-4" />
+              Profile Settings
+            </Button>
+        </Link>
         <Button
           variant="outline"
           className="w-full gap-2"

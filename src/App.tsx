@@ -18,7 +18,7 @@ import Employees from "./pages/Employees";
 import Devices from "./pages/Devices";
 import Accounts from "./pages/Accounts";
 import Groups from "./pages/Groups";
-import GroupDetails from "./pages/GroupDetails"; // <-- 1. IMPORT BARU
+import GroupDetails from "./pages/GroupDetails"; 
 import Assets from "./pages/Asset";
 import DebtReceivable from "./pages/DebtReceivable";
 import ProfitLoss from "./pages/ProfitLoss";
@@ -28,6 +28,10 @@ import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Definisi Role untuk akses ke halaman Management/Financial (Semua kecuali Staff)
+const MANAGEMENT_ROLES = ["superadmin", "leader", "admin", "viewer"];
+const ALL_ROLES = ["superadmin", "leader", "admin", "staff", "viewer"];
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -47,14 +51,105 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* --- RESTRICTED PAGES (Block Staff) --- */}
             <Route
               path="/performance"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
                   <Performance />
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/commissions"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Commissions />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cashflow"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Cashflow />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employees"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Employees />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/devices"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Devices />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounts"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Accounts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/groups"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Groups />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/groups/:groupId"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <GroupDetails />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/assets"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <Assets />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/debt-receivable"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <DebtReceivable />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/kpi"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <KPI />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profit-loss"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES}>
+                  <ProfitLoss />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* --- STAFF ONLY / ALL ACCESS PAGES --- */}
             <Route
               path="/daily-report"
               element={
@@ -66,115 +161,23 @@ const App = () => (
             <Route
               path="/attendance"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={ALL_ROLES}>
                   <Attendance />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/commissions"
-              element={
-                <ProtectedRoute>
-                  <Commissions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/cashflow"
-              element={
-                <ProtectedRoute>
-                  <Cashflow />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/employees"
-              element={
-                <ProtectedRoute>
-                  <Employees />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/devices"
-              element={
-                <ProtectedRoute>
-                  <Devices />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/accounts"
-              element={
-                <ProtectedRoute>
-                  <Accounts />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/groups"
-              element={
-                <ProtectedRoute>
-                  <Groups />
-                </ProtectedRoute>
-              }
-            />
-            
-            {/* --- 2. TAMBAHKAN RUTE BARU DI SINI --- */}
-            <Route
-              path="/groups/:groupId"
-              element={
-                <ProtectedRoute>
-                  <GroupDetails />
-                </ProtectedRoute>
-              }
-            />
-            {/* ------------------------------------- */}
-            
-            <Route
-              path="/assets"
-              element={
-                <ProtectedRoute>
-                  <Assets />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/debt-receivable"
-              element={
-                <ProtectedRoute>
-                  <DebtReceivable />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/kpi"
-              element={
-                <ProtectedRoute>
-                  <KPI />
                 </ProtectedRoute>
               }
             />
             <Route
               path="/knowledge"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={ALL_ROLES}>
                   <Knowledge />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profit-loss"
-              element={
-                <ProtectedRoute>
-                  <ProfitLoss />
                 </ProtectedRoute>
               }
             />
             <Route
               path="/profile"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={ALL_ROLES}>
                   <Profile />
                 </ProtectedRoute>
               }
