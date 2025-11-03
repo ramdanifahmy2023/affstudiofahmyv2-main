@@ -1,20 +1,11 @@
 // src/pages/Dashboard.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Search,
-  DollarSign,
-  TrendingUp,
   Loader2,
 } from "lucide-react";
 import {
@@ -28,6 +19,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import { Progress } from "@/components/ui/progress";
 import DashboardStats from "@/components/Dashboard/DashboardStats";
@@ -35,7 +29,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 
 // --- INTERFACE & HELPER DARI PERFORMANCE.TS (Untuk Ranking/Chart) ---
 interface EmployeePerformance {
@@ -46,6 +39,13 @@ interface EmployeePerformance {
     commission: number; // actual_commission
     kpi: number; // total_kpi
 }
+
+// --- Tipe Data Baru untuk Charts ---
+type CommissionBreakdown = { name: string; value: number; color: string };
+type GroupPerformance = { name: string; omset: number };
+type AccountPlatform = { name: string; value: number; color: string };
+// ------------------------------------
+
 
 const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget: number, attend: number, aTarget: number) => {
     // Bobot: Omset 50%, Komisi 30%, Absensi 20%
@@ -66,13 +66,29 @@ const getKPIColorClass = (kpi: number) => {
 
 // --- END INTERFACE & HELPER ---
 
+// Warna untuk chart
+const CHART_COLORS = {
+  blue: "hsl(var(--chart-1))",
+  green: "hsl(var(--chart-2))",
+  yellow: "hsl(var(--chart-3))",
+  shopee: "hsl(var(--chart-1))", // Biru untuk Shopee
+  tiktok: "hsl(var(--chart-2))", // Hijau untuk TikTok
+};
+
 
 const Dashboard = () => {
   const { profile } = useAuth();
   const [filterDateStart, setFilterDateStart] = useState("");
   const [filterDateEnd, setFilterDateEnd] = useState("");
+  
+  // State untuk Data Real-time
   const [loadingRanking, setLoadingRanking] = useState(true);
+  const [loadingCharts, setLoadingCharts] = useState(true);
   const [rankingData, setRankingData] = useState<EmployeePerformance[]>([]);
+  const [commissionData, setCommissionData] = useState<CommissionBreakdown[]>([]);
+  const [groupData, setGroupData] = useState<GroupPerformance[]>([]);
+  const [accountData, setAccountData] = useState<AccountPlatform[]>([]);
+  
   const [searchTerm, setSearchTerm] = useState("");
 
   const formatCurrency = (amount: number | null) => {
@@ -92,12 +108,13 @@ const Dashboard = () => {
     }).format(value);
     
   const handleFilterSubmit = () => {
-    // Logic filter akan diterapkan di sini (saat ini hanya konsol log)
     console.log("Filtering applied:", { start: filterDateStart, end: filterDateEnd });
+    // TODO: Terapkan filter ke fetchRankingData dan fetchChartData
+    toast.info("Fitur filter global sedang dalam pengembangan.");
   };
   
   // --- FETCH RANKING DATA (REAL) ---
-  const fetchRankingData = async () => {
+  const fetchRankingData = useCallback(async () => {
     setLoadingRanking(true);
     try {
         const { data: kpiResults, error: kpiError } = await supabase
@@ -122,7 +139,6 @@ const Dashboard = () => {
         
         const rawData = kpiResults as any[];
 
-        // Deduplikasi: Hanya simpan KPI terbaru (bulan terbesar) per karyawan
         const latestKpiMap = new Map<string, EmployeePerformance>();
         
         rawData.forEach((item) => {
@@ -142,17 +158,13 @@ const Dashboard = () => {
                 kpi: calculatedKpi,
             };
             
-            // Hanya ambil record paling baru (asumsi data diurutkan berdasarkan target_month)
             if (!latestKpiMap.has(employeeId)) {
                 latestKpiMap.set(employeeId, performanceRecord);
             }
         });
 
         const uniqueData = Array.from(latestKpiMap.values());
-
-        // Urutkan berdasarkan KPI (Tertinggi ke Rendah)
         uniqueData.sort((a, b) => b.kpi - a.kpi);
-
         setRankingData(uniqueData);
 
     } catch (error: any) {
@@ -161,11 +173,88 @@ const Dashboard = () => {
     } finally {
         setLoadingRanking(false);
     }
-  };
+  }, []);
+  
+  // --- FUNGSI BARU: FETCH DATA UNTUK CHARTS ---
+  const fetchChartData = useCallback(async () => {
+    setLoadingCharts(true);
+    try {
+      // 1. Fetch Commission Breakdown
+      const { data: commsData, error: commsError } = await supabase
+        .from('commissions')
+        .select('gross_commission, net_commission, paid_commission');
+        
+      if (commsError) throw commsError;
+
+      const gross = commsData.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
+      const net = commsData.reduce((acc, c) => acc + (c.net_commission || 0), 0);
+      const paid = commsData.reduce((acc, c) => acc + (c.paid_commission || 0), 0);
+      
+      setCommissionData([
+        { name: "Kotor", value: gross, color: CHART_COLORS.blue },
+        { name: "Bersih", value: net, color: CHART_COLORS.green },
+        { name: "Cair", value: paid, color: CHART_COLORS.yellow },
+      ]);
+
+      // 2. Fetch Group Performance (dari KPI data)
+      const { data: groupPerfData, error: groupPerfError } = await supabase
+        .from('kpi_targets')
+        .select(`
+          actual_sales,
+          employees ( groups ( name ) )
+        `);
+        
+      if (groupPerfError) throw groupPerfError;
+      
+      const groupOmsetMap = new Map<string, number>();
+      (groupPerfData as any[]).forEach(item => {
+        const groupName = item.employees?.groups?.name || "Tanpa Grup";
+        const currentOmset = groupOmsetMap.get(groupName) || 0;
+        groupOmsetMap.set(groupName, currentOmset + (item.actual_sales || 0));
+      });
+
+      const groupDataArray = Array.from(groupOmsetMap.entries())
+        .map(([name, omset]) => ({ name, omset }))
+        .sort((a, b) => b.omset - a.omset) // Urutkan dari terbesar
+        .slice(0, 5); // Ambil top 5
+        
+      setGroupData(groupDataArray);
+      
+      // 3. Fetch Account Platform Breakdown
+      const { data: accData, error: accError } = await supabase
+        .from('accounts')
+        .select('platform')
+        .in('platform', ['shopee', 'tiktok']);
+        
+      if (accError) throw accError;
+      
+      let shopeeCount = 0;
+      let tiktokCount = 0;
+      (accData as any[]).forEach(acc => {
+        if (acc.platform === 'shopee') shopeeCount++;
+        if (acc.platform === 'tiktok') tiktokCount++;
+      });
+      
+      setAccountData([
+        { name: "Shopee", value: shopeeCount, color: CHART_COLORS.shopee },
+        { name: "TikTok", value: tiktokCount, color: CHART_COLORS.tiktok },
+      ]);
+
+    } catch (error: any) {
+        toast.error("Gagal memuat data Charts Dashboard.");
+        console.error(error);
+    } finally {
+      setLoadingCharts(false);
+    }
+  }, []);
+  
   
   useEffect(() => {
-    if (profile) fetchRankingData();
-  }, [profile]);
+    if (profile) {
+        fetchRankingData();
+        fetchChartData();
+    }
+  }, [profile, fetchRankingData, fetchChartData]);
   
   // Filter Ranking Data berdasarkan Search Term
   const filteredRankingData = rankingData.filter(e => 
@@ -173,7 +262,7 @@ const Dashboard = () => {
     e.group.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // --- DATA DUMMY UNTUK CHART (Dibiarkan untuk visual layout) ---
+  // --- DATA DUMMY UNTUK CHART TREN (Sementara) ---
   const dummySalesData = [
     { name: "Mon", sales: 4000, commission: 2400 },
     { name: "Tue", sales: 3000, commission: 1398 },
@@ -182,23 +271,6 @@ const Dashboard = () => {
     { name: "Fri", sales: 1890, commission: 4800 },
     { name: "Sat", sales: 2390, commission: 3800 },
     { name: "Sun", sales: 3490, commission: 4300 },
-  ];
-  
-  const dummyCommissionData = [
-    { name: "Kotor", value: 125000000, color: "hsl(var(--chart-1))" },
-    { name: "Bersih", value: 100000000, color: "hsl(var(--chart-2))" },
-    { name: "Cair", value: 85000000, color: "hsl(var(--chart-3))" },
-  ];
-  
-  const dummyGroupData = [
-    { name: "Group A", omset: 45000000 },
-    { name: "Group B", omset: 38000000 },
-    { name: "Group C", omset: 32000000 },
-  ];
-  
-  const dummyAccountData = [
-    { name: "Shopee", value: 15, color: "hsl(var(--chart-1))" },
-    { name: "TikTok", value: 9, color: "hsl(var(--chart-2))" },
   ];
   // --- END DATA DUMMY ---
 
@@ -230,8 +302,8 @@ const Dashboard = () => {
                   onChange={(e) => setFilterDateEnd(e.target.value)}
                 />
               </div>
-              <Button onClick={handleFilterSubmit} className="gap-2" disabled>
-                <Search className="h-4 w-4" /> Terapkan (Soon)
+              <Button onClick={handleFilterSubmit} className="gap-2">
+                <Search className="h-4 w-4" /> Terapkan Filter
               </Button>
             </div>
           </CardContent>
@@ -247,6 +319,7 @@ const Dashboard = () => {
           <Card className="lg:col-span-2"> 
             <CardHeader>
               <CardTitle>Tren Omset & Komisi (Dummy)</CardTitle>
+               <CardDescription>Chart ini masih menggunakan data dummy. Fetch data real-time harian/mingguan akan ditambahkan.</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -266,14 +339,14 @@ const Dashboard = () => {
                   <Line
                     type="monotone"
                     dataKey="sales"
-                    stroke="hsl(var(--chart-1))"
+                    stroke={CHART_COLORS.blue}
                     strokeWidth={2}
                     name="Omset"
                   />
                   <Line
                     type="monotone"
                     dataKey="commission"
-                    stroke="hsl(var(--chart-2))"
+                    stroke={CHART_COLORS.green}
                     strokeWidth={2}
                     name="Komisi"
                   />
@@ -282,16 +355,21 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Chart Breakdown Komisi */}
+          {/* Chart Breakdown Komisi (REAL DATA) */}
           <Card>
             <CardHeader>
-              <CardTitle>Breakdown Komisi (Dummy)</CardTitle>
+              <CardTitle>Breakdown Komisi (All Time)</CardTitle>
             </CardHeader>
             <CardContent>
+             {loadingCharts ? (
+                 <div className="flex justify-center items-center h-[300px]">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                 </div>
+             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dummyCommissionData} layout="vertical">
+                <BarChart data={commissionData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
+                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" tickFormatter={(val) => formatCurrencyForChart(val)} />
                     <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
                     <Tooltip
                         contentStyle={{
@@ -301,25 +379,35 @@ const Dashboard = () => {
                         }}
                         formatter={(value: number) => formatCurrencyForChart(value)}
                     />
-                    <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Nilai"/>
+                    <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Nilai">
+                       {commissionData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
                 </BarChart>
               </ResponsiveContainer>
+             )}
             </CardContent>
           </Card>
         </div>
 
         {/* --- Charts Row 2 & Ranking --- */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Chart Performa Group */}
+          {/* Chart Performa Group (REAL DATA) */}
           <Card className="md:col-span-1">
             <CardHeader>
-              <CardTitle>Performa Group (Top 3) (Dummy)</CardTitle>
+              <CardTitle>Performa Group (Top 5 Omset)</CardTitle>
             </CardHeader>
             <CardContent>
+             {loadingCharts ? (
+                 <div className="flex justify-center items-center h-[300px]">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                 </div>
+             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dummyGroupData} layout="vertical">
+                <BarChart data={groupData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
+                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" tickFormatter={(val) => formatCurrencyForChart(val)} />
                   <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
                   <Tooltip
                     contentStyle={{
@@ -329,34 +417,45 @@ const Dashboard = () => {
                     }}
                     formatter={(value: number) => formatCurrencyForChart(value)}
                   />
-                  <Bar dataKey="omset" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Omset" />
+                  <Bar dataKey="omset" fill={CHART_COLORS.blue} radius={[0, 8, 8, 0]} name="Omset" />
                 </BarChart>
               </ResponsiveContainer>
+             )}
             </CardContent>
           </Card>
           
-          {/* Chart Performa Akun */}
+          {/* Chart Performa Akun (REAL DATA) */}
           <Card className="md:col-span-1">
             <CardHeader>
-              <CardTitle>Performa Akun (Dummy)</CardTitle>
+              <CardTitle>Breakdown Platform Akun</CardTitle>
             </CardHeader>
             <CardContent>
+            {loadingCharts ? (
+                 <div className="flex justify-center items-center h-[300px]">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                 </div>
+             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dummyAccountData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
-                    <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "var(--radius)",
-                        }}
-                        formatter={(value: number) => `${value} Akun`}
-                    />
-                    <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[0, 8, 8, 0]} name="Jumlah Akun"/>
-                </BarChart>
+                 <PieChart>
+                  <Pie
+                    data={accountData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {accountData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value} Akun`} />
+                  <Legend />
+                </PieChart>
               </ResponsiveContainer>
+             )}
             </CardContent>
           </Card>
 
@@ -383,7 +482,7 @@ const Dashboard = () => {
                         <p className="text-center text-muted-foreground">Tidak ada data ranking ditemukan.</p>
                     )}
                     {filteredRankingData
-                        .slice(0, 5)
+                        .slice(0, 5) // Tampilkan Top 5
                         .map((employee, index) => (
                         <div
                             key={employee.id}
