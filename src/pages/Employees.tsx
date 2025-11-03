@@ -31,17 +31,17 @@ import {
   Loader2, 
   Eye, 
   Download,
-  Search // <-- 1. IMPORT BARU
+  Search 
 } from "lucide-react";
-import { Input } from "@/components/ui/input"; // <-- 1. IMPORT BARU
-import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import { Input } from "@/components/ui/input"; 
+import { Label } from "@/components/ui/label"; 
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // <-- 1. IMPORT BARU
+} from "@/components/ui/select"; 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -51,7 +51,7 @@ import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert";
 import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog";
 import { useExport } from "@/hooks/useExport"; 
 
-// Tipe data gabungan
+// Tipe data gabungan - DIPERBARUI
 export interface EmployeeProfile {
   id: string; // employee_id
   profile_id: string; // profiles.id
@@ -64,6 +64,10 @@ export interface EmployeeProfile {
   position: string | null;
   group_name: string | null;
   group_id: string | null; 
+  // --- TAMBAHAN BARU ---
+  date_of_birth: string | null;
+  address: string | null;
+  // --------------------
 }
 
 // --- 2. TIPE DATA BARU UNTUK FILTER ---
@@ -120,7 +124,9 @@ const Employees = () => {
             role,
             phone,
             avatar_url,
-            status
+            status,
+            date_of_birth,
+            address
           ),
           groups (
             name
@@ -160,6 +166,10 @@ const Employees = () => {
         status: emp.profiles.status,
         group_name: emp.groups?.name || "Belum ada group",
         group_id: emp.group_id, 
+        // --- AMBIL DATA BARU ---
+        date_of_birth: emp.profiles.date_of_birth,
+        address: emp.profiles.address,
+        // ------------------------
       }));
 
       setEmployees(formattedData);
@@ -231,6 +241,10 @@ const Employees = () => {
       { header: 'Jabatan', dataKey: 'position' },
       { header: 'Email', dataKey: 'email' },
       { header: 'No. HP', dataKey: 'phone' },
+      // --- TAMBAHAN DI EXPORT ---
+      { header: 'Alamat', dataKey: 'address' },
+      { header: 'Tgl Lahir', dataKey: 'date_of_birth' },
+      // --------------------------
       { header: 'Grup', dataKey: 'group_name' },
       { header: 'Status', dataKey: 'status' },
       { header: 'Role', dataKey: 'role' },
@@ -240,6 +254,10 @@ const Employees = () => {
         ...emp,
         position: emp.position || '-',
         phone: emp.phone || '-',
+        // --- HANDLE NULL DI EXPORT ---
+        address: emp.address || '-',
+        date_of_birth: emp.date_of_birth || '-',
+        // -----------------------------
     }));
 
     const options = {

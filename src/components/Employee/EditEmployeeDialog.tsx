@@ -21,14 +21,22 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { EmployeeProfile } from "@/pages/Employees"; // Import tipe dari halaman Employees
+import { Loader2, CalendarIcon } from "lucide-react"; 
+import { EmployeeProfile } from "@/pages/Employees"; 
+import { cn } from "@/lib/utils"; 
+import { format } from "date-fns"; 
+// --- IMPORT TAMBAHAN ---
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Textarea } from "@/components/ui/textarea"; 
+// -------------------------
+
 
 interface EditEmployeeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  employeeToEdit: EmployeeProfile | null; // Data karyawan yang akan diedit
+  employeeToEdit: EmployeeProfile | null; 
 }
 
 interface Group {
@@ -47,12 +55,16 @@ export const EditEmployeeDialog = ({
   
   // Form state
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState(""); // Akan di-disable
+  const [email, setEmail] = useState(""); 
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
   const [role, setRole] = useState<string>("");
   const [groupId, setGroupId] = useState<string>("");
   const [status, setStatus] = useState("active");
+  // --- STATE BARU ---
+  const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(undefined);
+  const [address, setAddress] = useState("");
+  // --------------------
 
   // Ambil data group untuk dropdown
   useEffect(() => {
@@ -73,22 +85,24 @@ export const EditEmployeeDialog = ({
       setPhone(employeeToEdit.phone || "");
       setPosition(employeeToEdit.position || "");
       setRole(employeeToEdit.role || "");
-      // PERBAIKAN: Gunakan "no-group" jika group_id null
       setGroupId(employeeToEdit.group_id || "no-group"); 
       setStatus(employeeToEdit.status || "active");
+      
+      // --- ISI STATE BARU DARI employeeToEdit YANG LENGKAP ---
+      setDateOfBirth(employeeToEdit.date_of_birth ? new Date(employeeToEdit.date_of_birth + "T00:00:00") : undefined);
+      setAddress(employeeToEdit.address || "");
+      // -----------------------------------------------------
     }
-  }, [employeeToEdit, isOpen]);
+  }, [employeeToEdit, isOpen]); // Dependensi hanya pada props
 
   const handleClose = () => {
     onClose();
-    // Reset state saat ditutup
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!employeeToEdit) return; // Safety check
+    if (!employeeToEdit) return;
 
-    // Validasi tambahan
     if (!role) {
       toast.error("Role / Hak Akses wajib diisi.");
       return;
@@ -98,7 +112,6 @@ export const EditEmployeeDialog = ({
     toast.info("Sedang memperbarui data karyawan...");
 
     try {
-      // Tentukan nilai final groupId: null jika "no-group"
       const finalGroupId = (groupId === "no-group" || groupId === "") ? null : groupId;
 
       // 1. Update tabel 'profiles'
@@ -107,8 +120,14 @@ export const EditEmployeeDialog = ({
         .update({
           full_name: fullName,
           phone: phone || null,
-          role: role as any, // Cast ke type Enum
+          role: role as any,
           status: status,
+          // --- UPDATE FIELD BARU ---
+          address: address || null,
+          date_of_birth: dateOfBirth 
+            ? format(dateOfBirth, "yyyy-MM-dd") 
+            : null,
+          // ------------------------
         })
         .eq("id", employeeToEdit.profile_id);
 
@@ -119,9 +138,9 @@ export const EditEmployeeDialog = ({
         .from("employees")
         .update({
           position: position || null,
-          group_id: finalGroupId, // Gunakan nilai final
+          group_id: finalGroupId,
         })
-        .eq("id", employeeToEdit.id); // 'id' di EmployeeProfile adalah employee_id
+        .eq("id", employeeToEdit.id);
 
       if (employeeError) throw employeeError;
 
@@ -141,7 +160,7 @@ export const EditEmployeeDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl"> 
         <DialogHeader>
           <DialogTitle>Edit Data Karyawan</DialogTitle>
           <DialogDescription>
@@ -149,6 +168,7 @@ export const EditEmployeeDialog = ({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="fullName">Nama Lengkap</Label>
@@ -169,6 +189,7 @@ export const EditEmployeeDialog = ({
               />
             </div>
           </div>
+          
           <div className="space-y-2">
             <Label htmlFor="email">Email (Login)</Label>
             <Input
@@ -177,7 +198,7 @@ export const EditEmployeeDialog = ({
               value={email}
               disabled 
               readOnly
-              className="cursor-not-allowed"
+              className="bg-muted/50 cursor-not-allowed"
             />
           </div>
           
@@ -191,6 +212,55 @@ export const EditEmployeeDialog = ({
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
+            {/* --- FIELD BARU: TANGGAL LAHIR --- */}
+            <div className="space-y-2">
+              <Label htmlFor="dateOfBirth">Tanggal Lahir</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dateOfBirth && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateOfBirth ? (
+                      format(dateOfBirth, "PPP")
+                    ) : (
+                      <span>Pilih tanggal</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateOfBirth}
+                    onSelect={setDateOfBirth}
+                    captionLayout="dropdown-buttons"
+                    fromYear={1970}
+                    toYear={new Date().getFullYear()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {/* ------------------------------------- */}
+          </div>
+          
+          {/* --- FIELD BARU: ALAMAT --- */}
+          <div className="space-y-2">
+            <Label htmlFor="address">Alamat</Label>
+            <Textarea
+              id="address"
+              placeholder="Masukkan alamat lengkap karyawan..."
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </div>
+          {/* --------------------------- */}
+          
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role">Role / Hak Akses</Label>
               <Select value={role} onValueChange={setRole} required>
@@ -206,8 +276,6 @@ export const EditEmployeeDialog = ({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="group">Group</Label>
               <Select value={groupId} onValueChange={setGroupId}>
@@ -222,7 +290,8 @@ export const EditEmployeeDialog = ({
                 </SelectContent>
               </Select>
             </div>
-             <div className="space-y-2">
+            
+            <div className="space-y-2">
               <Label htmlFor="status">Status Akun</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger id="status">
@@ -234,6 +303,7 @@ export const EditEmployeeDialog = ({
                 </SelectContent>
               </Select>
             </div>
+            
           </div>
           
           <DialogFooter>

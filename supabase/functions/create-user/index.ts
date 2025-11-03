@@ -9,7 +9,7 @@ const corsHeaders = {
   // Izinkan header yang dikirim oleh Supabase Client
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  // Tambahkan 'POST' ke Allow-Methods untuk Preflight
+  // Tambahkan 'POST' dan 'OPTIONS' ke Allow-Methods untuk Preflight dan Main Request
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -17,6 +17,7 @@ const corsHeaders = {
 async function handler(req: Request): Promise<Response> {
   // Handle preflight request (OPTIONS) dengan header yang lengkap
   if (req.method === "OPTIONS") {
+    // Memberikan response 'ok' dengan semua header CORS yang dibutuhkan
     return new Response("ok", {
       headers: {
         ...corsHeaders,
