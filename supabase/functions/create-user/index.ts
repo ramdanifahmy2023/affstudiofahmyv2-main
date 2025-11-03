@@ -4,31 +4,37 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Header untuk menangani CORS (PENTING)
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "*", // Memungkinkan semua origin (termasuk Vercel Anda)
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json", // <-- PENTING: Tambahkan di sini
 };
 
 // Definisikan logika handler
 async function handler(req: Request): Promise<Response> {
   // Handle preflight request (OPTIONS)
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    // --- Solusi: Kirim respons OPTIONS dengan headers CORS saja ---
+    return new Response("ok", { 
+      headers: { 
+        ...corsHeaders,
+        "Access-Control-Allow-Methods": "POST, OPTIONS", // Method yang diizinkan
+        "Content-Type": "text/plain", // Content type boleh text/plain untuk OPTIONS
+      }
+    });
   }
 
-  console.log("FUNCTION START: create-user invoked."); // <-- LOGGING BARU
+  console.log("FUNCTION START: create-user invoked.");
 
   let newUserId: string | null = null;
   let newProfileId: string | null = null;
 
   try {
-    // 1. Buat Admin Client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 2. Ambil data dari body request
     const body = await req.json();
     const {
       email,
@@ -40,16 +46,15 @@ async function handler(req: Request): Promise<Response> {
       groupId,
       status,
     } = body;
-    
-    // ... Validasi Input (Kode tidak berubah) ...
 
+    // --- Validasi input dasar ---
     if (!email || !password || !fullName || !role || !position) {
       return new Response(
         JSON.stringify({
           error: "Email, password, nama, role, dan jabatan wajib diisi.",
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: corsHeaders, // Menggunakan corsHeaders yang sudah termasuk Content-Type
           status: 400,
         },
       );
@@ -61,11 +66,13 @@ async function handler(req: Request): Promise<Response> {
           error: "Password minimal harus 8 karakter.",
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: corsHeaders,
           status: 400,
         },
       );
     }
+
+    // --- MULAI "TRANSAKSI" ---
 
     // 3. Menjalankan supabase.auth.admin.createUser()
     const { data: authData, error: authError } =
@@ -94,7 +101,7 @@ async function handler(req: Request): Promise<Response> {
       .single();
 
     if (profileError) {
-      console.error("Gagal insert ke profiles. Melakukan rollback user:", newUserId); // <-- LOGGING BARU
+      console.error("Gagal insert ke profiles. Melakukan rollback user:", newUserId);
       await supabaseAdmin.auth.admin.deleteUser(newUserId);
       throw profileError;
     }
@@ -111,7 +118,7 @@ async function handler(req: Request): Promise<Response> {
       });
 
     if (employeeError) {
-      console.error("Gagal insert ke employees. Melakukan rollback profile:", newProfileId, " Error:", employeeError.message); // <-- LOGGING BARU
+      console.error("Gagal insert ke employees. Melakukan rollback profile:", newProfileId, " Error:", employeeError.message);
       
       // Rollback Auth User dan Profile
       if (newUserId) {
@@ -123,12 +130,14 @@ async function handler(req: Request): Promise<Response> {
       throw employeeError;
     }
 
+    // --- AKHIR "TRANSAKSI" ---
+
     // 6. Kirim respon sukses
-    console.log("FUNCTION END: User successfully created and response sent."); // <-- LOGGING BARU
+    console.log("FUNCTION END: User successfully created and response sent.");
     return new Response(
       JSON.stringify({ message: "User berhasil dibuat!" }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: corsHeaders, // Menggunakan corsHeaders yang sudah termasuk Content-Type
         status: 200,
       },
     );
@@ -138,7 +147,7 @@ async function handler(req: Request): Promise<Response> {
     return new Response(
       JSON.stringify({ error: error.message }),
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: corsHeaders, // Menggunakan corsHeaders yang sudah termasuk Content-Type
         status: 500,
       },
     );
