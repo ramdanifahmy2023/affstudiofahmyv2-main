@@ -1,4 +1,6 @@
-import { useState } from "react";
+// src/Account/AddAccountDialog.tsx
+
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -47,11 +49,11 @@ const accountFormSchema = z.object({
   }),
   username: z.string().min(3, { message: "Username wajib diisi." }),
   email: z.string().email({ message: "Format email tidak valid." }),
-  password: z.string().min(1, { message: "Password wajib diisi." }),
+  password: z.string().min(8, { message: "Password minimal 8 karakter." }),
   phone: z.string().min(10, { message: "No. HP minimal 10 digit." }),
   account_status: z.enum(["active", "banned_temporary", "banned_permanent"]),
   data_status: z.enum(["empty", "in_progress", "rejected", "verified"]),
-  // Link Profil & Keterangan tidak ada di skema DB, jadi saya tambahkan
+  // Field non-DB, hanya untuk UI
   link_profil: z.string().url({ message: "URL tidak valid" }).optional().or(z.literal('')),
   keterangan: z.string().optional(),
 });
@@ -81,23 +83,38 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
       keterangan: "",
     },
   });
+  
+  // Reset form saat dialog dibuka
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        platform: undefined,
+        username: "",
+        email: "",
+        password: "",
+        phone: "",
+        account_status: "active",
+        data_status: "empty",
+        link_profil: "",
+        keterangan: "",
+      });
+    }
+  }, [open, form]);
 
   const onSubmit = async (values: AccountFormValues) => {
     setLoading(true);
     try {
-      // Spek DB Anda tidak punya kolom 'link_profil' atau 'keterangan'
-      // Saya akan insert data yang ada di skema saja.
+      // Hanya insert data yang ada di skema DB
       const { error } = await supabase
         .from("accounts")
         .insert({
           platform: values.platform as AccountPlatform,
           username: values.username,
           email: values.email,
-          password: values.password, // TODO: Enkripsi sisi client?
+          password: values.password, 
           phone: values.phone,
           account_status: values.account_status as AccountStatus,
           data_status: values.data_status as AccountDataStatus,
-          // group_id akan di-set saat alokasi, bukan saat pembuatan
         });
 
       if (error) {
@@ -111,7 +128,7 @@ export const AddAccountDialog = ({ open, onOpenChange, onSuccess }: AddAccountDi
 
       toast.success(`Akun "${values.username}" berhasil ditambahkan.`);
       form.reset();
-      onSuccess(); // Panggil callback sukses (refresh list & tutup dialog)
+      onSuccess(); 
     } catch (error: any) {
       console.error(error);
       toast.error(`Terjadi kesalahan: ${error.message}`);

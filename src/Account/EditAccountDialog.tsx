@@ -53,20 +53,19 @@ type AccountPlatform = "shopee" | "tiktok";
 type AccountStatus = "active" | "banned_temporary" | "banned_permanent";
 type AccountDataStatus = "empty" | "in_progress" | "rejected" | "verified";
 
-// Skema validasi Zod (diperbarui untuk menangani null dari DB)
+// Skema validasi Zod
 const accountFormSchema = z.object({
   platform: z.enum(["shopee", "tiktok"]),
   username: z.string().min(3, { message: "Username wajib diisi." }),
   email: z.string().email({ message: "Format email tidak valid." }),
-  password: z.string().optional(), // Password opsional saat edit
+  // Password opsional saat edit (dikosongkan = tidak diubah)
+  password: z.string().optional(), 
   phone: z.string().optional().nullable(),
   account_status: z.enum(["active", "banned_temporary", "banned_permanent"]),
   data_status: z.enum(["empty", "in_progress", "rejected", "verified"]),
-  // Karena kolom ini tidak ada di DB, kita biarkan opsional di form
+  // Field non-DB, hanya untuk UI
   link_profil: z.string().url({ message: "URL tidak valid" }).optional().or(z.literal('')),
   keterangan: z.string().optional(),
-  // Field untuk group_id (jika diperlukan untuk edit alokasi)
-  group_id: z.string().uuid().optional().nullable(),
 });
 
 type AccountFormValues = z.infer<typeof accountFormSchema>;
@@ -80,12 +79,9 @@ interface EditAccountDialogProps {
 
 export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: EditAccountDialogProps) => {
   const [loading, setLoading] = useState(false);
-  // Tambahkan state untuk daftar group jika Anda ingin mengedit alokasi di sini.
-  // Karena kita fokus CRUD, kita akan skip alokasi group untuk saat ini.
 
   const form = useForm<AccountFormValues>({
     resolver: zodResolver(accountFormSchema),
-    // Default values akan diisi di useEffect
     defaultValues: {
         username: "",
         email: "",
@@ -94,7 +90,6 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
         account_status: "active",
         data_status: "empty",
         platform: "shopee",
-        group_id: null,
         link_profil: "",
         keterangan: "",
     }
@@ -107,15 +102,12 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
         platform: account.platform,
         username: account.username,
         email: account.email,
-        phone: account.phone || "",
+        phone: account.phone || "", // Null -> "" untuk input field
         account_status: (account.account_status || "active") as AccountStatus,
         data_status: (account.data_status || "empty") as AccountDataStatus,
-        // Kita tidak bisa mengisi password lama, jadi biarkan kosong/opsional
-        password: "",
-        // Asumsi link_profil dan keterangan tidak di-fetch, jadi biarkan kosong
+        password: "", // Selalu kosongkan password saat reset
         link_profil: "",
         keterangan: "", 
-        group_id: account.groups?.name || null // Ini perlu penyesuaian jika Anda ingin alokasi group
       });
     }
   }, [account, open, form]);
@@ -130,17 +122,17 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
           platform: values.platform as AccountPlatform,
           username: values.username,
           email: values.email,
-          phone: values.phone || null,
+          // Menggunakan `|| null` agar string kosong dari form berubah jadi NULL di DB
+          phone: values.phone || null, 
           account_status: values.account_status as AccountStatus,
           data_status: values.data_status as AccountDataStatus,
-          // group_id: values.group_id // Jika ada field group_id di form
       };
 
-      // Hanya update password jika diisi
-      if (values.password) {
+      // Hanya update password jika diisi (minimal 8 karakter)
+      if (values.password && values.password.length >= 8) {
           updateData.password = values.password;
       }
-
+      
       const { error } = await supabase
         .from("accounts")
         .update(updateData)
@@ -254,7 +246,8 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
                   <FormItem>
                     <FormLabel>Password (Kosongkan jika tidak diubah)</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      {/* Pastikan minimal 8 karakter jika diisi */}
+                      <Input type="password" placeholder="•••••••• (min. 8)" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -318,20 +311,6 @@ export const EditAccountDialog = ({ open, onOpenChange, onSuccess, account }: Ed
                   </FormItem>
                 )}
               />
-               {/* Karena keterangan tidak ada di DB, kita komentar atau hapus jika mengganggu */}
-               {/* <FormField
-                control={form.control}
-                name="keterangan"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Keterangan (Opsional)</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Catatan tambahan..." {...field} value={field.value ?? ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              /> */}
             </div>
             
             <DialogFooter>

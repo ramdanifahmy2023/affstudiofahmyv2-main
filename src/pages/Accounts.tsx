@@ -19,14 +19,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"; // Import Dropdown
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { AddAccountDialog } from "@/Account/AddAccountDialog";
-import { EditAccountDialog } from "@/Account/EditAccountDialog"; // <-- IMPORT BARU
-import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert"; // <-- IMPORT BARU
+import { EditAccountDialog } from "@/Account/EditAccountDialog"; 
+import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert"; 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +69,7 @@ const Accounts = () => {
   // Cek hak akses
   const canManageAccounts =
     profile?.role === "superadmin" || profile?.role === "leader";
-  const canDelete = profile?.role === "superadmin"; // Hanya superadmin yang bisa delete
+  const canDelete = profile?.role === "superadmin";
 
   // Fetch data
   const fetchAccounts = async () => {
@@ -86,7 +86,8 @@ const Accounts = () => {
           account_status,
           data_status,
           groups ( name )
-        `);
+        `)
+        .order('created_at', { ascending: false });
       if (error) throw error;
       setAccounts(data as any);
     } catch (error: any) {
@@ -162,6 +163,12 @@ const Accounts = () => {
     }
   };
 
+  // Summary Cards Data
+  const shopeeCount = accounts.filter(a => a.platform === 'shopee').length;
+  const tiktokCount = accounts.filter(a => a.platform === 'tiktok').length;
+  const activeCount = accounts.filter(a => a.account_status === 'active').length;
+
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -180,7 +187,7 @@ const Accounts = () => {
           )}
         </div>
 
-        {/* Summary Cards (Data dummy) */}
+        {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-3">
@@ -200,7 +207,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-success">{loading ? "..." : accounts.filter(a => a.account_status === 'active').length}</div>
+              <div className="text-2xl font-bold text-success">{loading ? "..." : activeCount}</div>
               <p className="text-xs text-muted-foreground mt-1">Active rate</p>
             </CardContent>
           </Card>
@@ -211,7 +218,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{loading ? "..." : accounts.filter(a => a.platform === 'shopee').length}</div>
+              <div className="text-2xl font-bold">{loading ? "..." : shopeeCount}</div>
               <p className="text-xs text-muted-foreground mt-1">Primary platform</p>
             </CardContent>
           </Card>
@@ -222,7 +229,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{loading ? "..." : accounts.filter(a => a.platform === 'tiktok').length}</div>
+              <div className="text-2xl font-bold">{loading ? "..." : tiktokCount}</div>
               <p className="text-xs text-muted-foreground mt-1">Secondary platform</p>
             </CardContent>
           </Card>
@@ -249,7 +256,7 @@ const Accounts = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" disabled>
                 <Download className="h-4 w-4" />
                 Export (Soon)
               </Button>
@@ -352,7 +359,7 @@ const Accounts = () => {
        )}
 
        {/* Render Dialog Edit Akun */}
-       {canManageAccounts && (
+       {canManageAccounts && dialogs.edit && (
           <EditAccountDialog
             open={!!dialogs.edit}
             onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
@@ -362,7 +369,7 @@ const Accounts = () => {
        )}
        
        {/* Render Alert Hapus Akun */}
-       {canDelete && (
+       {canDelete && dialogs.delete && (
           <DeleteAccountAlert
             open={!!dialogs.delete}
             onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
