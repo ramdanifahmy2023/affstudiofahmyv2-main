@@ -1,9 +1,11 @@
+// src/pages/Accounts.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, UserCircle, Loader2 } from "lucide-react";
+import { Plus, Search, Download, UserCircle, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,16 +14,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Import Dropdown
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-// IMPORT BARU
 import { AddAccountDialog } from "@/Account/AddAccountDialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Untuk filter Shopee/TikTok
-import { cn } from "@/lib/utils"; // Import cn
+import { EditAccountDialog } from "@/Account/EditAccountDialog"; // <-- IMPORT BARU
+import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert"; // <-- IMPORT BARU
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
-// Tipe data dari Supabase
+// Tipe data dari Supabase (diperbarui untuk menangani null dari DB)
 type AccountData = {
   id: string;
   platform: "shopee" | "tiktok";
@@ -35,18 +44,32 @@ type AccountData = {
   } | null;
 };
 
+// Tipe untuk dialog
+type DialogState = {
+  add: boolean;
+  edit: AccountData | null;
+  delete: AccountData | null;
+};
+
 const Accounts = () => {
   const { profile } = useAuth();
   const [accounts, setAccounts] = useState<AccountData[]>([]);
   const [filteredAccounts, setFilteredAccounts] = useState<AccountData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [platformFilter, setPlatformFilter] = useState("all"); // State untuk filter tab
+  const [platformFilter, setPlatformFilter] = useState("all");
+  
+  // State untuk Dialogs
+  const [dialogs, setDialogs] = useState<DialogState>({
+    add: false,
+    edit: null,
+    delete: null,
+  });
 
   // Cek hak akses
   const canManageAccounts =
     profile?.role === "superadmin" || profile?.role === "leader";
+  const canDelete = profile?.role === "superadmin"; // Hanya superadmin yang bisa delete
 
   // Fetch data
   const fetchAccounts = async () => {
@@ -95,6 +118,20 @@ const Accounts = () => {
       });
     setFilteredAccounts(results);
   }, [searchTerm, platformFilter, accounts]);
+  
+  // Handlers
+  const handleEditClick = (account: AccountData) => {
+    setDialogs({ ...dialogs, edit: account });
+  };
+  
+  const handleDeleteClick = (account: AccountData) => {
+    setDialogs({ ...dialogs, delete: account });
+  };
+  
+  const handleSuccess = () => {
+     setDialogs({ add: false, edit: null, delete: null });
+     fetchAccounts(); // Refresh data
+  }
 
   // Badge helpers
   const getAccountStatusBadge = (status: string | null) => {
@@ -136,7 +173,7 @@ const Accounts = () => {
             </p>
           </div>
           {canManageAccounts && (
-            <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
+            <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
               <Plus className="h-4 w-4" />
               Tambah Akun
             </Button>
@@ -152,7 +189,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">24</div>
+              <div className="text-2xl font-bold">{loading ? "..." : accounts.length}</div>
               <p className="text-xs text-muted-foreground mt-1">All platforms</p>
             </CardContent>
           </Card>
@@ -163,8 +200,8 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-success">20</div>
-              <p className="text-xs text-muted-foreground mt-1">83% active rate</p>
+              <div className="text-2xl font-bold text-success">{loading ? "..." : accounts.filter(a => a.account_status === 'active').length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Active rate</p>
             </CardContent>
           </Card>
           <Card>
@@ -174,7 +211,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">15</div>
+              <div className="text-2xl font-bold">{loading ? "..." : accounts.filter(a => a.platform === 'shopee').length}</div>
               <p className="text-xs text-muted-foreground mt-1">Primary platform</p>
             </CardContent>
           </Card>
@@ -185,7 +222,7 @@ const Accounts = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">9</div>
+              <div className="text-2xl font-bold">{loading ? "..." : accounts.filter(a => a.platform === 'tiktok').length}</div>
               <p className="text-xs text-muted-foreground mt-1">Secondary platform</p>
             </CardContent>
           </Card>
@@ -204,7 +241,6 @@ const Accounts = () => {
                 </TabsList>
               </Tabs>
               <div className="flex-1 relative w-full">
-                {/* --- BLOK YANG DIPERBAIKI --- */}
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Cari username atau email..."
@@ -212,7 +248,6 @@ const Accounts = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                {/* --- BATAS PERBAIKAN --- */}
               </div>
               <Button variant="outline" className="gap-2">
                 <Download className="h-4 w-4" />
@@ -235,13 +270,13 @@ const Accounts = () => {
                     <TableHead>Grup</TableHead>
                     <TableHead>Status Akun</TableHead>
                     <TableHead>Status Data</TableHead>
-                    <TableHead>Actions</TableHead>
+                    {canManageAccounts && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAccounts.length === 0 && (
                      <TableRow>
-                       <TableCell colSpan={7} className="text-center h-24">
+                       <TableCell colSpan={canManageAccounts ? 7 : 6} className="text-center h-24">
                          {searchTerm ? "Akun tidak ditemukan." : "Belum ada data akun."}
                        </TableCell>
                      </TableRow>
@@ -272,13 +307,32 @@ const Accounts = () => {
                       </TableCell>
                       <TableCell>{getAccountStatusBadge(account.account_status)}</TableCell>
                       <TableCell>{getDataStatusBadge(account.data_status)}</TableCell>
-                      <TableCell>
-                        {canManageAccounts && (
-                          <Button variant="ghost" size="sm">
-                            Edit
-                          </Button>
-                        )}
-                      </TableCell>
+                      {canManageAccounts && (
+                        <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditClick(account)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit Akun
+                                </DropdownMenuItem>
+                                {canDelete && (
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteClick(account)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Hapus Akun
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -291,14 +345,32 @@ const Accounts = () => {
       {/* Render Dialog Tambah Akun */}
        {canManageAccounts && (
          <AddAccountDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchAccounts(); // Refresh data
-           }}
+           open={dialogs.add}
+           onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
+           onSuccess={handleSuccess}
          />
        )}
+
+       {/* Render Dialog Edit Akun */}
+       {canManageAccounts && (
+          <EditAccountDialog
+            open={!!dialogs.edit}
+            onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+            onSuccess={handleSuccess}
+            account={dialogs.edit}
+          />
+       )}
+       
+       {/* Render Alert Hapus Akun */}
+       {canDelete && (
+          <DeleteAccountAlert
+            open={!!dialogs.delete}
+            onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
+            onSuccess={handleSuccess}
+            account={dialogs.delete}
+          />
+       )}
+
     </MainLayout>
   );
 };

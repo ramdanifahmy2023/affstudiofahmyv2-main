@@ -1,9 +1,11 @@
+// src/pages/Devices.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Smartphone, Download, Loader2 } from "lucide-react";
+import { Plus, Search, Smartphone, Download, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,15 +14,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Import Dropdown
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
-// IMPORT BARU:
-import { AddDeviceDialog } from "@/components/Device/AddDeviceDialog";
 
-// Tipe data untuk device
+// IMPORT DIALOG BARU
+import { AddDeviceDialog } from "@/components/Device/AddDeviceDialog";
+import { EditDeviceDialog } from "@/components/Device/EditDeviceDialog"; 
+import { DeleteDeviceAlert } from "@/components/Device/DeleteDeviceAlert"; 
+
+
+// Tipe data untuk device (Diperbarui untuk mencakup group_id)
 type DeviceData = {
   id: string;
   device_id: string;
@@ -28,6 +40,8 @@ type DeviceData = {
   google_account: string | null;
   purchase_date: string | null;
   purchase_price: number | null;
+  screenshot_url: string | null; // Tambahkan ini agar bisa di-fetch
+  group_id: string | null; // Tambahkan ini
   groups: { // Data dari tabel 'groups'
     name: string;
   } | null;
@@ -39,7 +53,12 @@ const Devices = () => {
   const [filteredDevices, setFilteredDevices] = useState<DeviceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false); // <-- STATE UNTUK DIALOG
+  
+  // State untuk Dialogs
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false); 
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<DeviceData | null>(null);
 
   const canManageDevices =
     profile?.role === "superadmin" || profile?.role === "leader";
@@ -76,6 +95,8 @@ const Devices = () => {
           google_account,
           purchase_date,
           purchase_price,
+          screenshot_url,
+          group_id,
           groups ( name )
         `);
 
@@ -104,8 +125,23 @@ const Devices = () => {
     setFilteredDevices(results);
   }, [searchTerm, devices]);
   
-  const handleAddDevice = () => {
-     setIsModalOpen(true); // <-- GANTI FUNGSI INI
+  // Handlers untuk Dialog
+  const handleEditClick = (device: DeviceData) => {
+    setSelectedDevice(device);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteClick = (device: DeviceData) => {
+    setSelectedDevice(device);
+    setIsDeleteAlertOpen(true);
+  };
+  
+  const handleSuccess = () => {
+     setIsAddModalOpen(false);
+     setIsEditModalOpen(false);
+     setIsDeleteAlertOpen(false);
+     setSelectedDevice(null);
+     fetchDevices(); // Refresh data
   }
 
   return (
@@ -119,7 +155,7 @@ const Devices = () => {
             </p>
           </div>
           {canManageDevices && (
-            <Button className="gap-2" onClick={handleAddDevice}>
+            <Button className="gap-2" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="h-4 w-4" />
               Tambah Device
             </Button>
@@ -209,13 +245,13 @@ const Devices = () => {
                     <TableHead>Grup</TableHead>
                     <TableHead>Tgl. Beli</TableHead>
                     <TableHead className="text-right">Harga Beli</TableHead>
-                    <TableHead>Actions</TableHead>
+                    {canManageDevices && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredDevices.length === 0 && (
                      <TableRow>
-                       <TableCell colSpan={7} className="text-center h-24">
+                       <TableCell colSpan={canManageDevices ? 7 : 6} className="text-center h-24">
                          {searchTerm ? "Device tidak ditemukan." : "Belum ada data device."}
                        </TableCell>
                      </TableRow>
@@ -242,13 +278,30 @@ const Devices = () => {
                       <TableCell className="text-right">
                         {formatCurrency(device.purchase_price)}
                       </TableCell>
-                      <TableCell>
-                        {canManageDevices && (
-                           <Button variant="ghost" size="sm">
-                            Edit
-                          </Button>
-                        )}
-                      </TableCell>
+                      {canManageDevices && (
+                         <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditClick(device)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit Device
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteClick(device)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Hapus Device
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -258,16 +311,27 @@ const Devices = () => {
         </Card>
       </div>
       
-      {/* RENDER DIALOG TAMBAH DEVICE */}
+      {/* RENDER SEMUA DIALOG */}
       {canManageDevices && (
-         <AddDeviceDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchDevices(); // Refresh data
-           }}
-         />
+         <>
+           <AddDeviceDialog
+             open={isAddModalOpen}
+             onOpenChange={setIsAddModalOpen}
+             onSuccess={handleSuccess}
+           />
+           <EditDeviceDialog
+             open={isEditModalOpen}
+             onOpenChange={setIsEditModalOpen}
+             device={selectedDevice}
+             onSuccess={handleSuccess}
+           />
+           <DeleteDeviceAlert
+             open={isDeleteAlertOpen}
+             onOpenChange={setIsDeleteAlertOpen}
+             device={selectedDevice}
+             onSuccess={handleSuccess}
+           />
+         </>
        )}
     </MainLayout>
   );
