@@ -102,21 +102,26 @@ export const EditTransactionDialog = ({ open, onOpenChange, onSuccess, transacti
       });
   }, []);
 
-  // Update kategori berdasarkan Tipe
+  // === PERBAIKAN INFINITE LOOP DI SINI ===
   const transactionType = form.watch("type");
+  const { getValues, setValue } = form; // Destrukturisasi untuk dependensi stabil
+
   useEffect(() => {
+    let newCategories: string[] = [];
     if (transactionType === "income") {
-      setCategories(["Komisi Cair", "Lain-lain"]);
+      newCategories = ["Komisi Cair", "Lain-lain"];
     } else if (transactionType === "expense") {
-      setCategories(["Fix Cost", "Variable Cost", "Lain-lain"]);
-    } else {
-      setCategories([]);
+      newCategories = ["Fix Cost", "Variable Cost", "Lain-lain"];
     }
+    setCategories(newCategories);
+
     // Jika tipe berubah, reset category jika nilai lama tidak ada di list baru
-    if (transactionType && !categories.includes(form.getValues("category"))) {
-        form.setValue("category", "");
+    if (transactionType && !newCategories.includes(getValues("category"))) {
+        setValue("category", "");
     }
-  }, [transactionType, form, categories]); // Tambahkan 'categories' di dependency
+    // Hapus 'categories' dan 'form' dari dependency array
+  }, [transactionType, getValues, setValue]);
+  // === AKHIR PERBAIKAN ===
   
   // Isi form saat dialog dibuka
   useEffect(() => {

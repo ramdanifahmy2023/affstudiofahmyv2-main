@@ -100,9 +100,10 @@ const Cashflow = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
+    // ✅ PERBAIKAN: Safety check untuk format tanggal
     try {
       const date = new Date(dateString + "T00:00:00");
-      if (isNaN(date.getTime())) return "-";
+      if (isNaN(date.getTime())) return "-"; // Handle invalid date
       return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
     } catch {
       return "-";
