@@ -17,20 +17,20 @@ const corsHeaders = {
 async function handler(req: Request): Promise<Response> {
   // Handle preflight request (OPTIONS) dengan header yang lengkap
   if (req.method === "OPTIONS") {
-    return new Response("ok", { 
-        headers: {
-            ...corsHeaders,
-            // Header tambahan yang dibutuhkan browser untuk preflight
-            'Access-Control-Max-Age': '86400', 
-        }
+    return new Response("ok", {
+      headers: {
+        ...corsHeaders,
+        // Header tambahan yang dibutuhkan browser untuk preflight
+        "Access-Control-Max-Age": "86400",
+      },
     });
   }
 
-  console.log("FUNCTION START: create-user invoked."); 
+  console.log("FUNCTION START: create-user invoked.");
 
   let newUserId: string | null = null;
   let newProfileId: string | null = null;
-  let employeeRecordCreated = false; 
+  let employeeRecordCreated = false;
 
   try {
     // 1. Buat Admin Client
@@ -50,8 +50,12 @@ async function handler(req: Request): Promise<Response> {
       position,
       groupId,
       status,
+      // --- TAMBAHAN BARU ---
+      date_of_birth, // Akan berupa string YYYY-MM-DD atau null
+      address, // Akan berupa string atau null
+      // --------------------
     } = body;
-    
+
     // ... Validasi Input ...
     if (!email || !password || !fullName || !role || !position) {
       return new Response(
@@ -64,9 +68,9 @@ async function handler(req: Request): Promise<Response> {
         },
       );
     }
-    
+
     if (password.length < 8) {
-       return new Response(
+      return new Response(
         JSON.stringify({
           error: "Password minimal harus 8 karakter.",
         }),
@@ -102,6 +106,10 @@ async function handler(req: Request): Promise<Response> {
         phone: phone || null,
         role: role,
         status: status,
+        // --- TAMBAHAN BARU ---
+        date_of_birth: date_of_birth || null,
+        address: address || null,
+        // --------------------
       })
       .select("id")
       .single();
@@ -109,7 +117,7 @@ async function handler(req: Request): Promise<Response> {
     if (profileError) {
       console.error("Gagal insert ke profiles:", profileError.message);
       // Rollback Auth User, yang seharusnya menghapus profile juga karena ON DELETE CASCADE
-      await supabaseAdmin.auth.admin.deleteUser(newUserId); 
+      await supabaseAdmin.auth.admin.deleteUser(newUserId);
       throw profileError;
     }
 
@@ -127,42 +135,35 @@ async function handler(req: Request): Promise<Response> {
       });
 
     if (employeeError) {
-      console.error("Gagal insert ke employees:", employeeError.message); 
+      console.error("Gagal insert ke employees:", employeeError.message);
       // Rollback Auth User, yang seharusnya menghapus profile & employee karena ON DELETE CASCADE
-      await supabaseAdmin.auth.admin.deleteUser(newUserId); 
-      throw employeeError; 
+      await supabaseAdmin.auth.admin.deleteUser(newUserId);
+      throw employeeError;
     }
-    employeeRecordCreated = true; 
+    employeeRecordCreated = true;
     console.log("LOG: Employee record created successfully.");
-
 
     // 6. Kirim respon sukses
     console.log("FUNCTION END: User successfully created and response sent.");
-    return new Response(
-      JSON.stringify({ message: "User berhasil dibuat!" }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      },
-    );
+    return new Response(JSON.stringify({ message: "User berhasil dibuat!" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error: any) {
     // Tangani semua error
     console.error("Kesalahan umum di create-user:", error.message);
 
     // Kirim respons error yang lebih mudah dipahami
-    const friendlyErrorMessage = error.message.includes("duplicate key") 
-        ? "Email, Username, atau Profile ID sudah terdaftar. Gunakan yang lain."
-        : error.message.includes("violates foreign key constraint")
+    const friendlyErrorMessage = error.message.includes("duplicate key")
+      ? "Email, Username, atau Profile ID sudah terdaftar. Gunakan yang lain."
+      : error.message.includes("violates foreign key constraint")
         ? "Grup ID yang dipilih tidak valid."
         : error.message;
 
-    return new Response(
-      JSON.stringify({ error: friendlyErrorMessage }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500, // Mengembalikan 500 sebagai indikasi internal error (meski sudah difilter)
-      },
-    );
+    return new Response(JSON.stringify({ error: friendlyErrorMessage }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, // Mengembalikan 500 sebagai indikasi internal error (meski sudah difilter)
+    });
   }
 }
 

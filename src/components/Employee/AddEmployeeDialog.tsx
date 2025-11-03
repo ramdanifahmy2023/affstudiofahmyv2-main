@@ -19,9 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// --- 1. IMPORT TAMBAHAN ---
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Textarea } from "@/components/ui/textarea";
+import { CalendarIcon, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+// -------------------------
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 
 interface AddEmployeeDialogProps {
   isOpen: boolean;
@@ -41,7 +52,7 @@ export const AddEmployeeDialog = ({
 }: AddEmployeeDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
-  
+
   // Form state
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -51,6 +62,10 @@ export const AddEmployeeDialog = ({
   const [role, setRole] = useState<string>("");
   const [groupId, setGroupId] = useState<string>("no-group");
   const [status, setStatus] = useState("active");
+  // --- 2. STATE BARU ---
+  const [dateOfBirth, setDateOfBirth] = useState<Date | undefined>(undefined);
+  const [address, setAddress] = useState("");
+  // ---------------------
 
   // Ambil data group untuk dropdown
   useEffect(() => {
@@ -72,8 +87,12 @@ export const AddEmployeeDialog = ({
     setRole("");
     setGroupId("no-group");
     setStatus("active");
+    // --- 3. RESET STATE BARU ---
+    setDateOfBirth(undefined);
+    setAddress("");
+    // -------------------------
   };
-  
+
   const handleClose = () => {
     resetForm();
     onClose();
@@ -81,9 +100,15 @@ export const AddEmployeeDialog = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // ✅ VALIDASI SISI KLIEN UNTUK FIELD WAJIB
-    if (!fullName.trim() || !position.trim() || !email.trim() || !role || !password) {
+    if (
+      !fullName.trim() ||
+      !position.trim() ||
+      !email.trim() ||
+      !role ||
+      !password
+    ) {
       toast.error("Semua field bertanda (*) wajib diisi.");
       return;
     }
@@ -98,7 +123,8 @@ export const AddEmployeeDialog = ({
 
     try {
       // Tentukan nilai final groupId: null jika "no-group"
-      const finalGroupId = (groupId === "no-group" || groupId === "") ? null : groupId;
+      const finalGroupId =
+        groupId === "no-group" || groupId === "" ? null : groupId;
 
       // Memanggil Supabase Edge Function 'create-user'
       const { data, error } = await supabase.functions.invoke("create-user", {
@@ -111,6 +137,12 @@ export const AddEmployeeDialog = ({
           position: position.trim(),
           groupId: finalGroupId,
           status,
+          // --- 4. KIRIM DATA BARU ---
+          date_of_birth: dateOfBirth
+            ? format(dateOfBirth, "yyyy-MM-dd")
+            : null,
+          address: address.trim() || null,
+          // ------------------------
         },
       });
 
@@ -123,24 +155,27 @@ export const AddEmployeeDialog = ({
         } else {
           // Menangani Network/Timeout error
           toast.error("Gagal menambah karyawan.", {
-            description: error.message || "Terdapat masalah koneksi/server timeout. Silakan coba lagi.",
+            description:
+              error.message ||
+              "Terdapat masalah koneksi/server timeout. Silakan coba lagi.",
           });
         }
-        throw new Error(error.message); 
+        throw new Error(error.message);
       }
-      
+
       // PENTING: Periksa jika ada error dari body response (error dari Deno Function)
       if (data?.error) {
         toast.error("Gagal menambah karyawan.", {
-          description: data.error || "Pastikan email belum terdaftar atau data grup valid.",
+          description:
+            data.error ||
+            "Pastikan email belum terdaftar atau data grup valid.",
         });
-        throw new Error(data.error); 
+        throw new Error(data.error);
       }
 
       toast.success("Karyawan baru berhasil ditambahkan!");
       onSuccess();
       handleClose();
-
     } catch (error: any) {
       console.error("Error detail:", error);
     } finally {
@@ -150,13 +185,15 @@ export const AddEmployeeDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
+      {/* --- 5. PERBESAR DIALOG (max-w-lg atau max-w-xl) --- */}
+      <DialogContent className="sm:max-w-xl max-h-[90svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Tambah Karyawan Baru</DialogTitle>
           <DialogDescription>
             Akun login akan otomatis dibuatkan.
           </DialogDescription>
         </DialogHeader>
+        {/* --- 6. BUAT FORM MENJADI SCROLLABLE --- */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -209,9 +246,58 @@ export const AddEmployeeDialog = ({
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
+            {/* --- 7. TAMBAHKAN DATE PICKER (TTL) --- */}
+            <div className="space-y-2">
+              <Label htmlFor="dateOfBirth">Tanggal Lahir</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dateOfBirth && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateOfBirth ? (
+                      format(dateOfBirth, "PPP")
+                    ) : (
+                      <span>Pilih tanggal</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateOfBirth}
+                    onSelect={setDateOfBirth}
+                    captionLayout="dropdown-buttons"
+                    fromYear={1970}
+                    toYear={new Date().getFullYear() - 10} // Minimal 10 tahun
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {/* ------------------------------------- */}
+          </div>
+
+          {/* --- 8. TAMBAHKAN TEXTAREA (ALAMAT) --- */}
+          <div className="space-y-2">
+            <Label htmlFor="address">Alamat</Label>
+            <Textarea
+              id="address"
+              placeholder="Masukkan alamat lengkap karyawan..."
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </div>
+          {/* -------------------------------------- */}
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role">Role / Hak Akses *</Label>
-              <Select value={role} onValueChange={setRole} >
+              <Select value={role} onValueChange={setRole}>
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Pilih Role" />
                 </SelectTrigger>
@@ -224,8 +310,6 @@ export const AddEmployeeDialog = ({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="group">Group</Label>
               <Select value={groupId} onValueChange={setGroupId}>
@@ -235,7 +319,9 @@ export const AddEmployeeDialog = ({
                 <SelectContent>
                   <SelectItem value="no-group">Tidak ada group</SelectItem>
                   {groups.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -253,9 +339,14 @@ export const AddEmployeeDialog = ({
               </Select>
             </div>
           </div>
-          
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose} disabled={loading}>
+
+          <DialogFooter className="pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleClose}
+              disabled={loading}
+            >
               Batal
             </Button>
             <Button type="submit" disabled={loading}>
