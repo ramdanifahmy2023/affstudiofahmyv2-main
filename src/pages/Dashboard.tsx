@@ -1,9 +1,8 @@
 // src/pages/Dashboard.tsx
-import { useState } from "react"; // <-- TAMBAHKAN
+import { useState } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
-import { MetricCard } from "@/components/Dashboard/MetricCard";
+import { MetricCard } from "@/components/Dashboard/MetricCard"; // Akan dihapus/digunakan untuk chart
 import { Input } from "@/components/ui/input";
-// Import komponen filter baru
 import {
   Select,
   SelectContent,
@@ -37,8 +36,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { Progress } from "@/components/ui/progress"; // Tambahkan import Progress
+import DashboardStats from "@/components/Dashboard/DashboardStats"; // <<-- IMPORT BARU
 
-// Data dummy (tetap sama)
+// Data dummy (Hanya untuk Chart dan Ranking, jika belum ada modul aslinya)
 const salesData = [
   { name: "Mon", sales: 4000, commission: 2400 },
   { name: "Tue", sales: 3000, commission: 1398 },
@@ -63,7 +64,6 @@ const groupData = [
   { name: "Group E", omset: 22000000 },
 ];
 
-// --- TAMBAHAN DATA UNTUK CHART BARU ---
 const accountData = [
   { name: "Shopee", value: 15, color: "hsl(var(--chart-1))" },
   { name: "TikTok", value: 9, color: "hsl(var(--chart-2))" },
@@ -83,7 +83,7 @@ const dummyEmployees = [
 ];
 
 const Dashboard = () => {
-  // --- TAMBAHAN STATE UNTUK FILTER ---
+  // --- STATE UNTUK FILTER ---
   const [filterDateStart, setFilterDateStart] = useState("");
   const [filterDateEnd, setFilterDateEnd] = useState("");
   const [filterGroup, setFilterGroup] = useState("");
@@ -99,10 +99,18 @@ const Dashboard = () => {
     });
   };
   
+  // Helper format mata uang sederhana untuk Chart
+  const formatCurrencyForChart = (value: number) =>
+    new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(value);
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* --- FILTER GLOBAL (DIPERBARUI) --- */}
+        {/* --- FILTER GLOBAL --- */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-wrap gap-4 items-end">
@@ -164,54 +172,16 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* 6 Metric Cards (Tetap Sama) */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            title="Total Komisi Kotor"
-            value="Rp 125.5M"
-            change={12.5}
-            trend="up"
-            icon={DollarSign}
-          />
-          <MetricCard
-            title="Total Komisi Bersih"
-            value="Rp 100.2M"
-            change={8.2}
-            trend="up"
-            icon={Wallet}
-          />
-          <MetricCard
-            title="Total Komisi Cair"
-            value="Rp 85.8M"
-            change={15.3}
-            trend="up"
-            icon={TrendingUp}
-          />
-          <MetricCard
-            title="Total Pengeluaran"
-            value="Rp 45.5M"
-            change={5.2}
-            trend="down"
-            icon={TrendingDown}
-          />
-          <MetricCard
-            title="Total Karyawan"
-            value="24"
-            icon={Users}
-          />
-          <MetricCard
-            title="Total Group"
-            value="5"
-            icon={Package}
-          />
-        </div>
+        {/* === GANTI DENGAN KOMPONEN DATA REAL === */}
+        <DashboardStats />
+        {/* ====================================== */}
 
         {/* --- Charts Row 1 (DIPERBARUI, 3 KOLOM) --- */}
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
           {/* Chart Tren Omset (Diperkecil) */}
           <Card className="lg:col-span-2"> {/* Mengambil 2/3 tempat */}
             <CardHeader>
-              <CardTitle>Tren Omset & Komisi</CardTitle>
+              <CardTitle>Tren Omset & Komisi (Dummy)</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -225,6 +195,7 @@ const Dashboard = () => {
                       border: "1px solid hsl(var(--border))",
                       borderRadius: "var(--radius)",
                     }}
+                    formatter={(value: number) => formatCurrencyForChart(value)}
                   />
                   <Legend />
                   <Line
@@ -249,7 +220,7 @@ const Dashboard = () => {
           {/* Chart Breakdown Komisi (Diperkecil) */}
           <Card> {/* Mengambil 1/3 tempat */}
             <CardHeader>
-              <CardTitle>Breakdown Komisi</CardTitle>
+              <CardTitle>Breakdown Komisi (Dummy)</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -277,11 +248,7 @@ const Dashboard = () => {
                       borderRadius: "var(--radius)",
                     }}
                     formatter={(value: number) =>
-                      new Intl.NumberFormat("id-ID", {
-                        style: "currency",
-                        currency: "IDR",
-                        minimumFractionDigits: 0,
-                      }).format(value)
+                      formatCurrencyForChart(value)
                     }
                   />
                   <Legend />
@@ -296,7 +263,7 @@ const Dashboard = () => {
           {/* Chart Performa Group (Tetap Sama) */}
           <Card>
             <CardHeader>
-              <CardTitle>Performa Group (Top 5)</CardTitle>
+              <CardTitle>Performa Group (Top 5) (Dummy)</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -310,13 +277,7 @@ const Dashboard = () => {
                       border: "1px solid hsl(var(--border))",
                       borderRadius: "var(--radius)",
                     }}
-                    formatter={(value: number) =>
-                      new Intl.NumberFormat("id-ID", {
-                        style: "currency",
-                        currency: "IDR",
-                        minimumFractionDigits: 0,
-                      }).format(value)
-                    }
+                    formatter={(value: number) => formatCurrencyForChart(value)}
                   />
                   <Bar dataKey="omset" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Omset" />
                 </BarChart>
@@ -327,7 +288,7 @@ const Dashboard = () => {
           {/* --- CHART PERFORMA AKUN (BARU) --- */}
           <Card>
             <CardHeader>
-              <CardTitle>Performa Akun</CardTitle>
+              <CardTitle>Performa Akun (Dummy)</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -363,10 +324,10 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Ranking Table (Tetap Sama) */}
+        {/* Ranking Table (Dummy) */}
         <Card>
           <CardHeader>
-            <CardTitle>Ranking Karyawan</CardTitle>
+            <CardTitle>Ranking Karyawan (Dummy)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -394,7 +355,7 @@ const Dashboard = () => {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold">
-                      Rp {(50 - rank * 5).toFixed(1)}M
+                      {formatCurrencyForChart((50 - rank * 5) * 1000000)}
                     </p>
                     <p className="text-xs text-muted-foreground">Omset</p>
                   </div>
