@@ -1,6 +1,6 @@
 // src/pages/Attendance.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -37,7 +37,7 @@ const Attendance = () => {
   const today = format(new Date(), "yyyy-MM-dd");
 
   // Fungsi untuk mengambil data absensi hari ini & riwayat
-  const fetchAttendance = async () => {
+  const fetchAttendance = useCallback(async () => {
     if (!employee) return;
     setLoading(true);
 
@@ -71,13 +71,13 @@ const Attendance = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [employee, today]); // Dependencies yang benar untuk useCallback
+
 
   // Ambil data saat halaman dimuat
   useEffect(() => {
     fetchAttendance();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employee, today]);
+  }, [fetchAttendance]); // Gunakan fetchAttendance (yang sekarang stabil) sebagai dependency
 
   // Fungsi untuk menangani Absen Masuk
   const handleCheckIn = async () => {
@@ -112,17 +112,13 @@ const Attendance = () => {
     }
   };
 
-  // Helper untuk format tanggal dan jam
-  const formatDateTime = (isoString: string | null) => {
-    if (!isoString) return "-";
-    return format(new Date(isoString), "PPP (HH:mm 'WIB')", { locale: indonesiaLocale });
-  };
-  
+  // Helper untuk format jam
   const formatTime = (isoString: string | null) => {
     if (!isoString) return "-";
     return format(new Date(isoString), "HH:mm 'WIB'");
   };
   
+  // Helper untuk format tanggal
   const formatDate = (dateString: string) => {
     // Tanggal dari DB (yyyy-MM-dd) perlu di-adjust
     const date = new Date(dateString + "T00:00:00"); 

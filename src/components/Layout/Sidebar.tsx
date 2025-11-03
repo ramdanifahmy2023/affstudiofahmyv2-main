@@ -1,3 +1,5 @@
+// src/components/Layout/Sidebar.tsx
+
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -6,17 +8,17 @@ import {
   Smartphone,
   UserCircle,
   FileText,
-  TrendingUp,
-  DollarSign,
-  Wallet,
+  TrendingUp, // Digunakan untuk Laba Rugi
+  DollarSign, // Digunakan untuk Commissions (tetap)
+  Wallet, // Digunakan untuk Cashflow (tetap)
   Package,
-  FileSpreadsheet,
-  Target,
-  BookOpen,
+  FileSpreadsheet, // Digunakan untuk Assets (tetap)
+  Target, // Digunakan untuk KPI (tetap)
+  BookOpen, // Digunakan untuk Knowledge (tetap)
   Settings,
   LogOut,
-  Archive, // <-- IMPORT BARU UNTUK ASET
-  Scale, // <-- IMPORT BARU UNTUK HUTANG
+  Archive,
+  Scale, // Digunakan untuk Debt & Receivable
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -34,13 +36,13 @@ const navItems: NavItem[] = [
   { title: "Performance", href: "/performance", icon: TrendingUp },
   { title: "Daily Report", href: "/daily-report", icon: FileText, roles: ["staff"] },
   { title: "Attendance", href: "/attendance", icon: UserCircle },
-  { title: "Commissions", href: "/commissions", icon: DollarSign },
+  { title: "Commissions", href: "/commissions", icon: DollarSign }, 
   { title: "Cashflow", href: "/cashflow", icon: Wallet },
   { title: "Assets", href: "/assets", icon: FileSpreadsheet },
-  { title: "Debt & Receivable", href: "/debt-receivable", icon: BookOpen },
-  // --- PERBAIKAN DI BAWAH INI ---
-  { title: "Laba Rugi", href: "/profit-loss", icon: Target },
-  // --- BATAS PERBAIKAN ---
+  // PERBAIKAN: Mengganti ikon agar lebih logis
+  { title: "Debt & Receivable", href: "/debt-receivable", icon: Scale }, // Menggunakan Scale (Timbangan)
+  { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp }, // Menggunakan TrendingUp (Hasil Finansial)
+  // AKHIR PERBAIKAN
   { title: "KPI Targets", href: "/kpi", icon: Target },
   { title: "Employees", href: "/employees", icon: Users },
   { title: "Devices", href: "/devices", icon: Smartphone },

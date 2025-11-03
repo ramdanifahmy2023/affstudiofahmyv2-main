@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client"; // Pastikan path ini benar
+import { format } from "date-fns"; // Import 'format' untuk tanggal
 import { toast } from "sonner";
 
 // Tipe data untuk laporan per device
@@ -22,8 +22,8 @@ export interface DeviceReport {
   id: string; // ID unik sementara (uuid)
   deviceId: string;
   accountId: string;
-  shift: string; // Nilai '1', '2', '3'
-  liveStatus: string; // Nilai 'Lancar', 'Mati/Relive'
+  shift: string;
+  liveStatus: string;
   kategoriProduk: string;
   openingBalance: number;
   closingBalance: number;
@@ -84,7 +84,7 @@ export const DeviceReportForm = ({
       }
 
       // 3. Logic Shift 2/3 (dan Status "Lancar")
-      setOpeningBalanceDisabled(false);
+      setOpeningBalanceDisabled(false); 
 
       if (
         report.shift &&
@@ -92,37 +92,39 @@ export const DeviceReportForm = ({
         report.deviceId &&
         report.liveStatus === "Lancar"
       ) {
+        // --- INI ADALAH BAGIAN YANG DISEMPURNAKAN ---
         try {
+          // Format tanggal ke YYYY-MM-DD agar cocok dengan query Supabase
           const formattedDate = format(reportDate, "yyyy-MM-dd");
           const previousShift = (parseInt(report.shift) - 1).toString();
 
           const { data, error } = await supabase
-            .from("daily_reports") 
+            .from("daily_reports") // Tabel Anda
             .select("closing_balance")
-            .eq("device_id", report.deviceId) 
+            .eq("device_id", report.deviceId) // Menggunakan ID Device yang dipilih
             .eq("report_date", formattedDate)
-            .eq("shift_number", previousShift) // <-- PERBAIKAN: Menggunakan kolom shift_number
-            .order("created_at", { ascending: false })
+            .eq("shift_number", previousShift) // Menggunakan kolom 'shift_number'
+            .order("created_at", { ascending: false }) // Ambil laporan terbaru
             .limit(1)
-            .single();
+            .maybeSingle(); // Gunakan maybeSingle karena bisa saja tidak ada
 
-          if (error && error.code !== 'PGRST116') throw error; // PGRST116 = 0 rows (wajar)
-
-          if (!data) {
-            setWarning(`Belum ada saldo dari Shift ${previousShift}. Input manual jika perlu.`);
+          if (error || !data) {
+            console.warn("Supabase fetch error/No data:", error);
+            setWarning("Belum ada data saldo dari shift sebelumnya.");
             onUpdate(report.id, "openingBalance", 0);
           } else {
             // Sukses! Set Omset Awal = Omset Akhir shift sebelumnya
             onUpdate(report.id, "openingBalance", data.closing_balance);
             setOpeningBalanceDisabled(true); // Kunci inputnya
           }
-        } catch (err: any) {
-          console.error("Gagal mengambil saldo sebelumnya:", err.message);
-          toast.error(`Gagal mengambil saldo sebelumnya: ${err.message}`);
-          setOpeningBalanceDisabled(false);
+        } catch (err) {
+          console.error("Gagal mengambil saldo sebelumnya:", err);
+          toast.error("Gagal mengambil saldo sebelumnya.");
           onUpdate(report.id, "openingBalance", 0);
         }
+        // --- AKHIR BAGIAN YANG DISEMPURNAKAN ---
       } else {
+        // Jika shift 2/3 tapi belum pilih device atau status
         if (report.shift !== "1") {
           onUpdate(report.id, "openingBalance", 0);
         }
@@ -132,6 +134,7 @@ export const DeviceReportForm = ({
     applyLogic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [report.shift, report.liveStatus, report.deviceId, reportDate, report.id, onUpdate]);
+
 
   return (
     <Card className="border-border/70 relative">
@@ -240,7 +243,7 @@ export const DeviceReportForm = ({
                 placeholder="Rp 0"
                 value={formatCurrency(report.openingBalance)}
                 disabled={openingBalanceDisabled}
-                readOnly={openingBalanceDisabled} 
+                readOnly={openingBalanceDisabled} // Tetap bisa dibaca
                 className={openingBalanceDisabled ? "bg-muted/50" : ""}
                 onChange={(e) =>
                   onUpdate(
