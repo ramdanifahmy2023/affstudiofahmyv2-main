@@ -88,8 +88,7 @@ const ProfilePage = () => {
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [isLogoutAlertOpen, setIsLogoutAlertOpen] = useState(false);
 
-  // --- PERBAIKAN DI SINI (LANGKAH 1) ---
-  // Berikan defaultValues agar form terkontrol sejak awal
+  // Inisialisasi form dengan default value yang aman
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
@@ -100,15 +99,13 @@ const ProfilePage = () => {
       date_of_birth: null,
     },
   });
-  // --- AKHIR PERBAIKAN (LANGKAH 1) ---
 
   const passwordForm = useForm<PasswordFormValues>({
     resolver: zodResolver(passwordFormSchema),
     defaultValues: { new_password: "", confirm_password: "" },
   });
 
-  // --- PERBAIKAN DI SINI (LANGKAH 2) ---
-  // Gunakan 'reset' di dalam useEffect untuk mengisi form saat 'profile' ada
+  // Mengisi form dengan data profile dari context
   useEffect(() => {
     if (profile) {
       profileForm.reset({
@@ -122,7 +119,6 @@ const ProfilePage = () => {
       });
     }
   }, [profile, profileForm]);
-  // --- AKHIR PERBAIKAN (LANGKAH 2) ---
 
   // Handler untuk submit form profil
   const onProfileSubmit = async (values: ProfileFormValues) => {
@@ -143,6 +139,7 @@ const ProfilePage = () => {
         .eq("id", profile.id);
       if (profileError) throw profileError;
 
+      // Update email di auth.users (akan memicu kirim konfirmasi)
       if (values.email !== user?.email) {
         const { error: authError } = await supabase.auth.updateUser({
           email: values.email,
@@ -167,6 +164,7 @@ const ProfilePage = () => {
   const onPasswordSubmit = async (values: PasswordFormValues) => {
     setLoadingPassword(true);
     try {
+      // Supabase hanya membutuhkan password baru untuk update
       const { error } = await supabase.auth.updateUser({
         password: values.new_password,
       });
@@ -261,10 +259,7 @@ const ProfilePage = () => {
                           <FormItem>
                             <FormLabel>No. HP</FormLabel>
                             <FormControl>
-                              {/* --- PERBAIKAN DI SINI (LANGKAH 3) --- */}
-                              {/* Hapus "value={field.value ?? ""}"
-                                  karena react-hook-form sudah mengelolanya */}
-                              <Input {...field} />
+                              <Input {...field} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -298,7 +293,7 @@ const ProfilePage = () => {
                               <PopoverContent className="w-auto p-0">
                                 <Calendar
                                   mode="single"
-                                  selected={field.value}
+                                  selected={field.value || undefined}
                                   onSelect={field.onChange}
                                   initialFocus
                                   captionLayout="dropdown-buttons"
@@ -319,10 +314,10 @@ const ProfilePage = () => {
                         <FormItem>
                           <FormLabel>Alamat</FormLabel>
                           <FormControl>
-                            {/* --- PERBAIKAN DI SINI (LANGKAH 4) --- */}
                             <Textarea
                               placeholder="Alamat lengkap Anda..."
                               {...field}
+                              value={field.value ?? ""}
                             />
                           </FormControl>
                           <FormMessage />
@@ -343,7 +338,7 @@ const ProfilePage = () => {
             </Card>
           </TabsContent>
 
-          {/* ... (Tab Ganti Password dan Tampilan tetap sama) ... */}
+          {/* ... (Tab Ganti Password) ... */}
           <TabsContent value="password">
             <Card>
               <Form {...passwordForm}>

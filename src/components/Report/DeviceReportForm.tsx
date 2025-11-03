@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Trash2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client"; // Pastikan path ini benar
-import { format } from "date-fns"; // Import 'format' untuk tanggal
+import { supabase } from "@/integrations/supabase/client"; 
+import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatCurrency, formatNumber } from "@/lib/utils"; // Import helper dari utils
 
 // Tipe data untuk laporan per device
 export interface DeviceReport {
@@ -39,6 +40,19 @@ interface DeviceReportFormProps {
   accounts: { id: string; name: string }[];
 }
 
+// Helper untuk parse input mata uang
+const parseCurrency = (value: string) => {
+    // Menghapus semua karakter non-digit (termasuk koma/titik pemisah ribuan)
+    return Number(value.replace(/[^0-9]/g, "")) || 0;
+};
+  
+// Helper untuk format input mata uang (menggunakan formatNumber dari utils)
+const formatCurrencyInput = (value: number) => {
+    // Hanya menggunakan formatNumber dari utils, karena tidak perlu simbol 'Rp'
+    return formatNumber(value); 
+};
+
+
 export const DeviceReportForm = ({
   report,
   reportDate,
@@ -50,19 +64,6 @@ export const DeviceReportForm = ({
 }: DeviceReportFormProps) => {
   const [openingBalanceDisabled, setOpeningBalanceDisabled] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
-
-  // Helper untuk format mata uang
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
-
-  const parseCurrency = (value: string) => {
-    return Number(value.replace(/[^0-9]/g, "")) || 0;
-  };
 
   // LOGIC SHIFT & STATUS LIVE (KRUSIAL)
   useEffect(() => {
@@ -99,14 +100,14 @@ export const DeviceReportForm = ({
           const previousShift = (parseInt(report.shift) - 1).toString();
 
           const { data, error } = await supabase
-            .from("daily_reports") // Tabel Anda
+            .from("daily_reports")
             .select("closing_balance")
             .eq("device_id", report.deviceId) // Menggunakan ID Device yang dipilih
             .eq("report_date", formattedDate)
             .eq("shift_number", previousShift) // Menggunakan kolom 'shift_number'
-            .order("created_at", { ascending: false }) // Ambil laporan terbaru
+            .order("submitted_at", { ascending: false }) // Ambil laporan terbaru
             .limit(1)
-            .maybeSingle(); // Gunakan maybeSingle karena bisa saja tidak ada
+            .maybeSingle(); 
 
           if (error || !data) {
             console.warn("Supabase fetch error/No data:", error);
@@ -240,10 +241,10 @@ export const DeviceReportForm = ({
               <Label htmlFor={`opening-${report.id}`}>Omset Awal</Label>
               <Input
                 id={`opening-${report.id}`}
-                placeholder="Rp 0"
-                value={formatCurrency(report.openingBalance)}
+                placeholder="0"
+                value={formatCurrencyInput(report.openingBalance)}
                 disabled={openingBalanceDisabled}
-                readOnly={openingBalanceDisabled} // Tetap bisa dibaca
+                readOnly={openingBalanceDisabled}
                 className={openingBalanceDisabled ? "bg-muted/50" : ""}
                 onChange={(e) =>
                   onUpdate(
@@ -264,8 +265,8 @@ export const DeviceReportForm = ({
               <Label htmlFor={`closing-${report.id}`}>Omset Akhir</Label>
               <Input
                 id={`closing-${report.id}`}
-                placeholder="Rp 0"
-                value={formatCurrency(report.closingBalance)}
+                placeholder="0"
+                value={formatCurrencyInput(report.closingBalance)}
                 onChange={(e) =>
                   onUpdate(
                     report.id,

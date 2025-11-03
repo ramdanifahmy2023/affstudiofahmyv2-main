@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge"; // <-- PERBAIKAN KRITIS: Import Badge
+import { Badge } from "@/components/ui/badge";
 import { CalendarIcon, FileText, Save, Plus, AlertCircle, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
@@ -40,8 +40,6 @@ import {
 } from "@/components/Report/DeviceReportForm";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/integrations/supabase/client";
-import { format as formatTz } from "date-fns-tz"; 
-
 
 // Tipe data untuk histori laporan
 interface ReportHistoryRecord {
@@ -60,9 +58,7 @@ const DailyReport = () => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false); 
   
-  // --- STATE BARU ---
   const [reportHistory, setReportHistory] = useState<ReportHistoryRecord[]>([]);
-  // --- AKHIR STATE BARU ---
 
   // State untuk multi-device reports
   const [deviceReports, setDeviceReports] = useState<DeviceReport[]>([
@@ -89,6 +85,7 @@ const DailyReport = () => {
     setLoading(true);
 
     try {
+        // PERBAIKAN: Memastikan select untuk devices berjalan lancar
         const { data: historyData, error: historyError } = await supabase
             .from("daily_reports")
             .select(`
@@ -274,20 +271,20 @@ const DailyReport = () => {
         employee_id: employee.id, 
         report_date: formattedDate,
         
-        shift: shiftStatusEnum(report), 
-        shift_status: shiftStatusEnum(report),
+        shift_status: shiftStatusEnum(report), // Menggunakan shift_status enum
         
         opening_balance: report.openingBalance,
         closing_balance: report.closingBalance,
         total_sales: report.closingBalance - report.openingBalance,
         notes: notes, 
-        device_id: report.deviceId,
-        account_id: report.accountId,
-        shift_number: report.shift,
-        live_status: report.liveStatus,
-        kategori_produk: report.kategoriProduk,
+        device_id: report.deviceId, 
+        account_id: report.accountId, 
+        shift_number: report.shift, // Nomor shift (1, 2, 3)
+        live_status: report.liveStatus, // Status Live (Lancar/Mati/Relive)
+        kategori_produk: report.kategoriProduk, // Kategori Produk
       }));
 
+      // KUNCI PENTING: Gunakan 3 kolom sebagai konflik untuk memungkinkan UPSERT multi-device di hari yang sama
       const { error: deviceError } = await supabase
         .from("daily_reports")
         .upsert(reportPayloads as any, { 
@@ -296,6 +293,15 @@ const DailyReport = () => {
         });
 
       if (deviceError) throw deviceError;
+
+      // Logika Absen Keluar (Dihapus dari sini karena tidak ada di blueprint DB)
+      // Asumsi: Absen Keluar akan di-handle oleh trigger DB saat daily_reports di-upsert/insert.
+      // Jika Absensi harus diupdate terpisah, perlu tambahkan logika:
+      // 
+      // await supabase.from('attendance')
+      //   .update({ check_out: new Date().toISOString() })
+      //   .eq('employee_id', employee.id)
+      //   .eq('attendance_date', formattedDate);
 
       toast.success("Laporan harian berhasil dikirim!");
       toast.info("Absen keluar Anda telah otomatis tercatat.");
