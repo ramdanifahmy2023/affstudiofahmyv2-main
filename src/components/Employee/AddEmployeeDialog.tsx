@@ -49,7 +49,7 @@ export const AddEmployeeDialog = ({
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
   const [role, setRole] = useState<string>("");
-  const [groupId, setGroupId] = useState<string>(""); // State ini tetap string
+  const [groupId, setGroupId] = useState<string>("no-group"); // Default ke no-group
   const [status, setStatus] = useState("active");
 
   // Ambil data group untuk dropdown
@@ -70,7 +70,7 @@ export const AddEmployeeDialog = ({
     setPhone("");
     setPosition("");
     setRole("");
-    setGroupId("");
+    setGroupId("no-group");
     setStatus("active");
   };
   
@@ -95,6 +95,9 @@ export const AddEmployeeDialog = ({
     toast.info("Sedang membuat akun karyawan...");
 
     try {
+      // Tentukan nilai final groupId: null jika "no-group"
+      const finalGroupId = (groupId === "no-group" || groupId === "") ? null : groupId;
+
       // Memanggil Supabase Edge Function 'create-user'
       const { data, error } = await supabase.functions.invoke("create-user", {
         body: {
@@ -104,8 +107,7 @@ export const AddEmployeeDialog = ({
           phone: phone || null, // Pastikan kirim null jika string kosong
           role,
           position,
-          // Kirim 'null' jika nilainya "no-group" atau string kosong
-          groupId: (groupId === "no-group" || groupId === "") ? null : groupId,
+          groupId: finalGroupId,
           status,
         },
       });
@@ -114,7 +116,7 @@ export const AddEmployeeDialog = ({
       if (error) {
         if (error.status === 500) {
             toast.error("Gagal menambah karyawan. (Internal Server Error)", {
-                description: "Silakan cek log Deno Function Anda di Supabase. Kemungkinan RLS, Foreign Key, atau Rollback Error.",
+                description: "Silakan cek log Deno Function Anda di Supabase.",
             });
         } else {
              // Ini menangani Network/Timeout error yang menyebabkan promise resolved dengan error object
@@ -157,7 +159,6 @@ export const AddEmployeeDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-{/* ... sisa kode JSX tidak berubah ... */}
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Tambah Karyawan Baru</DialogTitle>

@@ -73,14 +73,15 @@ export const EditEmployeeDialog = ({
       setPhone(employeeToEdit.phone || "");
       setPosition(employeeToEdit.position || "");
       setRole(employeeToEdit.role || "");
-      setGroupId(employeeToEdit.group_id || "no-group");
+      // PERBAIKAN: Gunakan "no-group" jika group_id null
+      setGroupId(employeeToEdit.group_id || "no-group"); 
       setStatus(employeeToEdit.status || "active");
     }
   }, [employeeToEdit, isOpen]);
 
   const handleClose = () => {
     onClose();
-    // Reset form bisa ditambahkan di sini jika perlu
+    // Reset state saat ditutup
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,14 +98,16 @@ export const EditEmployeeDialog = ({
     toast.info("Sedang memperbarui data karyawan...");
 
     try {
+      // Tentukan nilai final groupId: null jika "no-group"
+      const finalGroupId = (groupId === "no-group" || groupId === "") ? null : groupId;
+
       // 1. Update tabel 'profiles'
-      // Email tidak diupdate karena itu adalah kredensial login
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
           full_name: fullName,
           phone: phone || null,
-          role: role,
+          role: role as any, // Cast ke type Enum
           status: status,
         })
         .eq("id", employeeToEdit.profile_id);
@@ -116,7 +119,7 @@ export const EditEmployeeDialog = ({
         .from("employees")
         .update({
           position: position || null,
-          group_id: (groupId === "no-group" || groupId === "") ? null : groupId,
+          group_id: finalGroupId, // Gunakan nilai final
         })
         .eq("id", employeeToEdit.id); // 'id' di EmployeeProfile adalah employee_id
 
@@ -173,14 +176,12 @@ export const EditEmployeeDialog = ({
               id="email"
               type="email"
               value={email}
-              disabled // Email tidak boleh diganti dari sini
+              disabled 
               readOnly
               className="cursor-not-allowed"
             />
           </div>
           
-          {/* Hapus field Password, ganti password harusnya di halaman profil */}
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="phone">No. HP</Label>

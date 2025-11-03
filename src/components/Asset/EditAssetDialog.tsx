@@ -38,7 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
-// PERBAIKAN: Import formatCurrency dari utils
+// PERBAIKAN KRITIS: Import formatCurrency ditambahkan
 import { cn, formatCurrency } from "@/lib/utils"; 
 import { AssetData } from "@/pages/Asset"; // Import tipe data AssetData
 
@@ -135,7 +135,10 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
         try {
           const { data, error } = await supabase
             .from("employees")
-            .select(`id, profiles ( full_name )`);
+            .select(`
+              id, 
+              profiles ( full_name )
+            `);
             
           if (error) throw error;
 
@@ -325,7 +328,6 @@ export const EditAssetDialog = ({ open, onOpenChange, onSuccess, asset }: EditAs
             <div className="text-sm text-muted-foreground">
                 Total Harga Final (Qty x Harga Satuan): 
                 <span className="font-semibold text-foreground ml-1">
-                    {/* PERBAIKAN: Menggunakan formatCurrency yang sudah diimpor */}
                     {formatCurrency(estimatedTotal)} 
                 </span>
             </div>

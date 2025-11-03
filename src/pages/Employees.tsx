@@ -20,18 +20,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield } from "lucide-react";
+import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; // Komponen form Tambah
-import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; // Komponen form Edit (BARU)
-import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; // Komponen alert Hapus (BARU)
+import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; 
+import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; 
+import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; 
 
 // Tipe data gabungan dari profiles, employees, dan groups
 export interface EmployeeProfile {
   id: string; // employee_id
-  profile_id: string;
+  profile_id: string; // profiles.id
   full_name: string;
   email: string;
   role: string;
@@ -40,7 +40,7 @@ export interface EmployeeProfile {
   status: string;
   position: string | null;
   group_name: string | null;
-  group_id: string | null; // <-- PENTING: Ditambahkan untuk Edit
+  group_id: string | null; 
 }
 
 const Employees = () => {
@@ -59,7 +59,6 @@ const Employees = () => {
     setLoading(true);
     try {
       // Kita perlu join 3 tabel: employees, profiles, dan groups
-      // Modifikasi query untuk mengambil group_id
       const { data, error } = await supabase
         .from("employees")
         .select(`
@@ -78,7 +77,8 @@ const Employees = () => {
           groups (
             name
           )
-        `);
+        `)
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -94,7 +94,7 @@ const Employees = () => {
         avatar_url: emp.profiles.avatar_url,
         status: emp.profiles.status,
         group_name: emp.groups?.name || "Belum ada group",
-        group_id: emp.group_id, // <-- PENTING: Ambil group_id
+        group_id: emp.group_id, 
       }));
 
       setEmployees(formattedData);
@@ -111,8 +111,10 @@ const Employees = () => {
     fetchEmployees();
   }, []);
 
-  // Cek hak akses (sesuai blueprint)
+  // Cek hak akses (Superadmin: CRUD, Leader: CRU)
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
+  const canDelete = profile?.role === "superadmin"; // Hanya Superadmin bisa Hapus (Soft Delete)
+
 
   // Helper untuk avatar fallback
   const getAvatarFallback = (name: string) => {
@@ -173,9 +175,11 @@ const Employees = () => {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p>Memuat data...</p>
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
             ) : (
-              <div className="border rounded-md">
+              <div className="border rounded-md overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -247,12 +251,14 @@ const Employees = () => {
                                 <DropdownMenuItem onClick={() => handleOpenEdit(emp)}>
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-                                  onClick={() => handleOpenDelete(emp)}
-                                >
-                                  Hapus
-                                </DropdownMenuItem>
+                                {canDelete && (
+                                  <DropdownMenuItem 
+                                    className="text-red-600"
+                                    onClick={() => handleOpenDelete(emp)}
+                                  >
+                                    Hapus
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -279,21 +285,25 @@ const Employees = () => {
         onSuccess={handleSuccess}
       />
 
-      {/* Dialog Edit Karyawan (BARU) */}
-      <EditEmployeeDialog
-        isOpen={isEditDialogOpen}
-        onClose={closeAllModals}
-        onSuccess={handleSuccess}
-        employeeToEdit={selectedEmployee}
-      />
+      {/* Dialog Edit Karyawan */}
+      {selectedEmployee && (
+        <EditEmployeeDialog
+          isOpen={isEditDialogOpen}
+          onClose={closeAllModals}
+          onSuccess={handleSuccess}
+          employeeToEdit={selectedEmployee}
+        />
+      )}
 
-      {/* Alert Hapus Karyawan (BARU) */}
-      <DeleteEmployeeAlert
-        isOpen={isAlertOpen}
-        onClose={closeAllModals}
-        onSuccess={handleSuccess}
-        employeeToDelete={selectedEmployee}
-      />
+      {/* Alert Hapus Karyawan */}
+      {selectedEmployee && (
+        <DeleteEmployeeAlert
+          isOpen={isAlertOpen}
+          onClose={closeAllModals}
+          onSuccess={handleSuccess}
+          employeeToDelete={selectedEmployee}
+        />
+      )}
     </MainLayout>
   );
 };
