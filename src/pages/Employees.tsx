@@ -1,6 +1,6 @@
 // src/pages/Employees.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -21,7 +21,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2, Eye, Download } from "lucide-react"; // <-- 1. IMPORT DOWNLOAD
+import { 
+  PlusCircle, 
+  MoreHorizontal, 
+  User, 
+  Mail, 
+  Phone, 
+  Shield, 
+  Loader2, 
+  Eye, 
+  Download,
+  Search // <-- 1. IMPORT BARU
+} from "lucide-react";
+import { Input } from "@/components/ui/input"; // <-- 1. IMPORT BARU
+import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // <-- 1. IMPORT BARU
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,9 +49,9 @@ import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog";
 import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; 
 import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; 
 import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog";
-import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
+import { useExport } from "@/hooks/useExport"; 
 
-// Tipe data gabungan dari profiles, employees, dan groups
+// Tipe data gabungan
 export interface EmployeeProfile {
   id: string; // employee_id
   profile_id: string; // profiles.id
@@ -46,10 +66,28 @@ export interface EmployeeProfile {
   group_id: string | null; 
 }
 
+// --- 2. TIPE DATA BARU UNTUK FILTER ---
+type Group = {
+  id: string;
+  name: string;
+};
+// Daftar statis untuk filter (sesuai blueprint/supabase enum)
+const roles = ["superadmin", "leader", "admin", "staff", "viewer"];
+const statuses = ["active", "inactive"];
+// ------------------------------------
+
 const Employees = () => {
   const { profile } = useAuth(); 
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  
+  // --- 3. STATE BARU UNTUK FILTER ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [filterRole, setFilterRole] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
+  // ------------------------------------
   
   // State untuk dialog
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -58,21 +96,25 @@ const Employees = () => {
   const [isDetailOpen, setIsDetailOpen] = useState(false); 
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
 
-  // --- 3. INISIALISASI HOOK EXPORT ---
   const { exportToPDF, exportToCSV, isExporting } = useExport();
 
-  // Fungsi untuk mengambil data karyawan
-  const fetchEmployees = async () => {
+  // --- 4. MODIFIKASI FUNGSI FETCH DATA (SERVER-SIDE FILTERING) ---
+  const fetchEmployees = useCallback(async (
+    search: string, 
+    groupId: string, 
+    role: string, 
+    status: string
+  ) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("employees")
         .select(`
           id,
           profile_id,
           position,
           group_id, 
-          profiles (
+          profiles!inner (
             full_name,
             email,
             role,
@@ -85,6 +127,24 @@ const Employees = () => {
           )
         `)
         .order('created_at', { ascending: true });
+
+      // Terapkan filter
+      if (search.trim() !== "") {
+        query = query.ilike('profiles.full_name', `%${search.trim()}%`);
+      }
+      if (groupId === "no-group") {
+        query = query.is('group_id', null);
+      } else if (groupId !== "all") {
+        query = query.eq('group_id', groupId);
+      }
+      if (role !== "all") {
+        query = query.eq('profiles.role', role);
+      }
+      if (status !== "all") {
+        query = query.eq('profiles.status', status);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -110,11 +170,25 @@ const Employees = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // <-- useCallback
 
+  // --- 5. USEEFFECT UNTUK FETCH DATA GROUPS (SAAT MOUNT) ---
   useEffect(() => {
-    fetchEmployees();
+    const fetchGroups = async () => {
+      const { data } = await supabase.from("groups").select("id, name");
+      if (data) {
+        setAvailableGroups(data);
+      }
+    };
+    fetchGroups();
   }, []);
+
+  // --- 6. USEEFFECT UNTUK MEMANGGIL FETCH DATA SAAT FILTER BERUBAH ---
+  useEffect(() => {
+    // Kita panggil fetchEmployees di sini
+    fetchEmployees(searchTerm, filterGroup, filterRole, filterStatus);
+  }, [fetchEmployees, searchTerm, filterGroup, filterRole, filterStatus]);
+
 
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
   const canDelete = profile?.role === "superadmin";
@@ -124,21 +198,19 @@ const Employees = () => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
+  // Handlers untuk Dialog (Tetap sama)
   const handleOpenDetail = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsDetailOpen(true);
   };
-
   const handleOpenEdit = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsEditDialogOpen(true);
   };
-
   const handleOpenDelete = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsAlertOpen(true);
   };
-
   const closeAllModals = () => {
     setIsAddDialogOpen(false);
     setIsEditDialogOpen(false);
@@ -146,13 +218,13 @@ const Employees = () => {
     setIsDetailOpen(false); 
     setSelectedEmployee(null);
   };
-
   const handleSuccess = () => {
     closeAllModals();
-    fetchEmployees(); 
+    // Panggil ulang fetch dengan filter saat ini
+    fetchEmployees(searchTerm, filterGroup, filterRole, filterStatus); 
   };
   
-  // --- 4. FUNGSI HANDLE EXPORT ---
+  // Handle Export (Data 'employees' sudah terfilter)
   const handleExport = (type: 'pdf' | 'csv') => {
     const columns = [
       { header: 'Nama Lengkap', dataKey: 'full_name' },
@@ -164,7 +236,6 @@ const Employees = () => {
       { header: 'Role', dataKey: 'role' },
     ];
     
-    // Gunakan data 'employees' yang sudah di-fetch
     const exportData = employees.map(emp => ({
         ...emp,
         position: emp.position || '-',
@@ -196,7 +267,6 @@ const Employees = () => {
               Kelola data karyawan, group, dan hak akses.
             </p>
           </div>
-          {/* --- 5. TAMBAHKAN DROPDOWN EXPORT --- */}
           <div className="flex gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -221,15 +291,87 @@ const Employees = () => {
               </Button>
             )}
           </div>
-          {/* ---------------------------------- */}
         </div>
+
+        {/* --- 7. UI FILTER BARU --- */}
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Filter Search */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="search-name">Cari Nama Karyawan</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="search-name"
+                    placeholder="Ketik nama karyawan..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              {/* Filter Grup */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="filter-group">Filter Grup</Label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group" className="w-full">
+                    <SelectValue placeholder="Pilih Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Group</SelectItem>
+                    <SelectItem value="no-group">Belum ada group</SelectItem>
+                    {availableGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter Role */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="filter-role">Filter Role</Label>
+                <Select value={filterRole} onValueChange={setFilterRole}>
+                  <SelectTrigger id="filter-role" className="w-full">
+                    <SelectValue placeholder="Pilih Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Role</SelectItem>
+                    {roles.map(role => (
+                      <SelectItem key={role} value={role} className="capitalize">{role}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter Status */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="filter-status">Filter Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger id="filter-status" className="w-full">
+                    <SelectValue placeholder="Pilih Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    {statuses.map(status => (
+                      <SelectItem key={status} value={status} className="capitalize">{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        {/* ------------------------- */}
+
 
         {/* Card Tabel Karyawan */}
         <Card>
           <CardHeader>
             <CardTitle>Daftar Karyawan</CardTitle>
             <CardDescription>
-              Total {employees.length} karyawan terdaftar.
+              Menampilkan {employees.length} karyawan sesuai filter.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -252,6 +394,7 @@ const Employees = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {/* Menggunakan state 'employees' yang sudah terfilter */}
                     {employees.map((emp) => (
                       <TableRow key={emp.id}>
                         <TableCell>
@@ -335,7 +478,7 @@ const Employees = () => {
             )}
             {employees.length === 0 && !loading && (
                <p className="text-center text-muted-foreground py-4">
-                Belum ada data karyawan.
+                Tidak ada karyawan yang cocok dengan filter yang dipilih.
               </p>
             )}
           </CardContent>

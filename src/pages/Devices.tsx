@@ -5,6 +5,14 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // <-- 1. IMPORT BARU
 import { Plus, Search, Smartphone, Download, Loader2, MoreHorizontal, Pencil, Trash2, DollarSign, Archive } from "lucide-react";
 import {
   Table,
@@ -19,6 +27,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator, // <-- 1. IMPORT BARU
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,9 +35,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-// IMPORT HOOK BARU
 import { useExport } from "@/hooks/useExport";
-// IMPORT DIALOG
 import { AddDeviceDialog } from "@/components/Device/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/Device/EditDeviceDialog"; 
 import { DeleteDeviceAlert } from "@/components/Device/DeleteDeviceAlert"; 
@@ -50,6 +57,12 @@ type DeviceData = {
   } | null;
 };
 
+// --- 2. TIPE DATA BARU UNTUK FILTER ---
+type Group = {
+  id: string;
+  name: string;
+};
+
 // Tipe untuk dialog
 type DialogState = {
   add: boolean;
@@ -60,19 +73,21 @@ type DialogState = {
 
 const Devices = () => {
   const { profile } = useAuth();
-  const [devices, setDevices] = useState<DeviceData[]>([]);
-  const [filteredDevices, setFilteredDevices] = useState<DeviceData[]>([]);
+  const [devices, setDevices] = useState<DeviceData[]>([]); // Master list
+  const [filteredDevices, setFilteredDevices] = useState<DeviceData[]>([]); // List yang ditampilkan
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   
-  // State untuk Dialogs
+  // --- 3. STATE BARU UNTUK FILTER ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
+  
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
     edit: null,
     delete: null,
   });
 
-  // INISIALISASI HOOK EXPORT
   const { exportToPDF, exportToCSV, isExporting } = useExport();
 
   const canManageDevices =
@@ -91,7 +106,6 @@ const Devices = () => {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
     try {
-      // Tambahkan 'T00:00:00' untuk menghindari masalah timezone
       return format(new Date(`${dateString}T00:00:00`), "dd MMM yyyy");
     } catch (e) {
       return "-";
@@ -119,6 +133,7 @@ const Devices = () => {
       if (error) throw error;
       
       setDevices(data as any);
+      setFilteredDevices(data as any); // Set data awal untuk filtered list
 
     } catch (error: any) {
       toast.error("Gagal memuat data device.");
@@ -128,7 +143,6 @@ const Devices = () => {
     }
   };
   
-  // FUNGSI UNTUK EXPORT DATA
   const exportDevices = (type: 'pdf' | 'csv') => {
     const columns = [
       { header: 'ID Device', dataKey: 'device_id' },
@@ -140,13 +154,13 @@ const Devices = () => {
       { header: 'Link Bukti', dataKey: 'screenshot_url' },
     ];
     
-    // Siapkan data untuk export
+    // Gunakan filteredDevices untuk export
     const exportData = filteredDevices.map(d => ({
         ...d,
         group_name: d.groups?.name || '-',
         purchase_date_formatted: formatDate(d.purchase_date),
-        purchase_price_formatted: formatCurrency(d.purchase_price), // Format untuk display
-        purchase_price_raw: d.purchase_price || 0, // Data mentah jika diperlukan
+        purchase_price_formatted: formatCurrency(d.purchase_price),
+        purchase_price_raw: d.purchase_price || 0,
     }));
 
     const options = {
@@ -164,19 +178,43 @@ const Devices = () => {
   };
 
 
+  // --- 4. FETCH DATA (MASTER LIST DAN GROUPS) SAAT MOUNT ---
   useEffect(() => {
-    fetchDevices();
+    fetchDevices(); // Ambil master list devices
+    
+    // Ambil daftar grup untuk filter
+    const fetchGroups = async () => {
+      const { data } = await supabase.from("groups").select("id, name");
+      if (data) {
+        setAvailableGroups(data);
+      }
+    };
+    fetchGroups();
   }, []);
 
+  // --- 5. UPDATE LOGIKA FILTER (CLIENT-SIDE) ---
   useEffect(() => {
-    const results = devices.filter((device) =>
-      device.device_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      device.imei.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let results = [...devices]; // Mulai dengan master list
+
+    // Filter berdasarkan Grup
+    if (filterGroup !== "all") {
+      results = results.filter((device) => device.group_id === filterGroup);
+    }
+    
+    // Filter berdasarkan Search Term
+    if (searchTerm.trim() !== "") {
+      const lowerSearch = searchTerm.toLowerCase();
+      results = results.filter((device) =>
+        device.device_id.toLowerCase().includes(lowerSearch) ||
+        device.imei.toLowerCase().includes(lowerSearch) ||
+        (device.google_account && device.google_account.toLowerCase().includes(lowerSearch))
+      );
+    }
+    
     setFilteredDevices(results);
-  }, [searchTerm, devices]);
+  }, [searchTerm, filterGroup, devices]);
   
-  // Handlers untuk Dialog
+  
   const handleEditClick = (device: DeviceData) => {
     setDialogs({ ...dialogs, edit: device });
   };
@@ -187,9 +225,10 @@ const Devices = () => {
   
   const handleSuccess = () => {
      setDialogs({ add: false, edit: null, delete: null });
-     fetchDevices(); // Refresh data
+     fetchDevices(); // Panggil ulang master data setelah ada perubahan
   }
 
+  // Kalkulasi summary dari master list (bukan data terfilter)
   const totalInvestment = devices.reduce((acc, d) => acc + (d.purchase_price || 0), 0);
   const allocatedCount = devices.filter(d => d.groups).length;
 
@@ -261,37 +300,60 @@ const Devices = () => {
           </Card>
         </div>
 
-        {/* Table */}
+        {/* --- 6. GANTI UI FILTER --- */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari berdasarkan Device ID atau IMEI..."
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+            <div className="flex flex-col md:flex-row items-end gap-4">
+              {/* Filter Search */}
+              <div className="flex-1 w-full space-y-2">
+                <Label htmlFor="search-device">Cari (ID Device, IMEI, Akun Google)</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="search-device"
+                    placeholder="Cari device..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
               </div>
-              <Button variant="outline" disabled>Filter (Soon)</Button>
-               {/* DROP DOWN MENU UNTUK EXPORT */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2" disabled={isExporting || filteredDevices.length === 0}>
-                        <Download className="h-4 w-4" />
-                        {isExporting ? 'Mengekspor...' : 'Export'}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => exportDevices('pdf')} disabled={isExporting}>
-                        Export PDF
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportDevices('csv')} disabled={isExporting}>
-                        Export CSV
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              
+              {/* Filter Grup */}
+              <div className="flex-1 w-full space-y-2">
+                <Label htmlFor="filter-group">Filter Grup</Label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group" className="w-full">
+                    <SelectValue placeholder="Pilih Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Group</SelectItem>
+                    {availableGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+               {/* Tombol Export */}
+              <div className="flex-shrink-0">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-2" disabled={isExporting || filteredDevices.length === 0}>
+                          <Download className="h-4 w-4" />
+                          {isExporting ? 'Mengekspor...' : 'Export'}
+                      </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportDevices('pdf')} disabled={isExporting}>
+                          Export PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportDevices('csv')} disabled={isExporting}>
+                          Export CSV
+                      </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -314,10 +376,11 @@ const Devices = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {/* Gunakan filteredDevices untuk render tabel */}
                     {filteredDevices.length === 0 && (
                        <TableRow>
                          <TableCell colSpan={canManageDevices ? 7 : 6} className="text-center h-24">
-                           {searchTerm ? "Device tidak ditemukan." : "Belum ada data device."}
+                           {searchTerm || filterGroup !== 'all' ? "Device tidak ditemukan." : "Belum ada data device."}
                          </TableCell>
                        </TableRow>
                     )}
@@ -357,13 +420,16 @@ const Devices = () => {
                                     Edit Device
                                   </DropdownMenuItem>
                                   {canDelete && (
-                                      <DropdownMenuItem 
-                                        className="text-destructive"
-                                        onClick={() => handleDeleteClick(device)}
-                                      >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Hapus Device
-                                      </DropdownMenuItem>
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem 
+                                          className="text-destructive"
+                                          onClick={() => handleDeleteClick(device)}
+                                        >
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          Hapus Device
+                                        </DropdownMenuItem>
+                                      </>
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -379,7 +445,6 @@ const Devices = () => {
         </Card>
       </div>
       
-      {/* RENDER SEMUA DIALOG */}
       {canManageDevices && (
          <>
            <AddDeviceDialog

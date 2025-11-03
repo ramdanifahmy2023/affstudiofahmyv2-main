@@ -10,6 +10,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes"; // <-- 1. IMPORT USE THEME
 
 // Import komponen UI
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Loader2, CalendarIcon, LogOut } from "lucide-react";
+import { Loader2, CalendarIcon, LogOut, Moon, Sun, Laptop } from "lucide-react"; // <-- 2. IMPORT ICON BARU
 import { Label } from "@/components/ui/label";
 
 // Skema Zod untuk validasi form profil
@@ -84,6 +85,7 @@ type PasswordFormValues = z.infer<typeof passwordFormSchema>;
 
 const ProfilePage = () => {
   const { user, profile, signOut } = useAuth();
+  const { theme, setTheme } = useTheme(); // <-- 3. GUNAKAN HOOK
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [isLogoutAlertOpen, setIsLogoutAlertOpen] = useState(false);
@@ -395,24 +397,36 @@ const ProfilePage = () => {
               <CardHeader>
                 <CardTitle>Tampilan</CardTitle>
                 <CardDescription>
-                  Sesuaikan tampilan aplikasi. (Segera Hadir)
+                  Sesuaikan tampilan aplikasi di perangkat Anda.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <RadioGroup defaultValue="system" disabled>
+                {/* --- 4. AKTIFKAN UI DI SINI --- */}
+                <RadioGroup
+                  value={theme}
+                  onValueChange={setTheme}
+                  className="space-y-3"
+                >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="light" id="light" />
-                    <Label htmlFor="light">Terang</Label>
+                    <Label htmlFor="light" className="flex items-center gap-2 cursor-pointer">
+                      <Sun className="h-4 w-4" /> Terang
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="dark" id="dark" />
-                    <Label htmlFor="dark">Gelap</Label>
+                    <Label htmlFor="dark" className="flex items-center gap-2 cursor-pointer">
+                      <Moon className="h-4 w-4" /> Gelap
+                    </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="system" id="system" />
-                    <Label htmlFor="system">Sistem</Label>
+                    <Label htmlFor="system" className="flex items-center gap-2 cursor-pointer">
+                      <Laptop className="h-4 w-4" /> Sistem
+                    </Label>
                   </div>
                 </RadioGroup>
+                {/* --- AKHIR PERUBAHAN --- */}
               </CardContent>
             </Card>
           </TabsContent>

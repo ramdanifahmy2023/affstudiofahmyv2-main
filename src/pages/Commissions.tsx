@@ -1,9 +1,24 @@
 // src/pages/Commissions.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input"; // <-- 1. IMPORT BARU
+import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // <-- 1. IMPORT BARU
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"; // <-- 1. IMPORT BARU
+import { Calendar } from "@/components/ui/calendar"; // <-- 1. IMPORT BARU
 import {
   Table,
   TableBody,
@@ -17,7 +32,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,19 +44,22 @@ import {
   DollarSign,
   TrendingUp,
   Wallet,
-  Download, // <-- 2. IMPORT DOWNLOAD ICON
+  Download,
+  CalendarIcon, // <-- 1. IMPORT BARU
+  Search, // <-- 1. IMPORT BARU
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, subDays, parseISO } from "date-fns"; // <-- 1. IMPORT BARU
 import { id as indonesiaLocale } from "date-fns/locale";
 
 // Import dialog-dialog
 import { AddCommissionDialog } from "@/components/Commission/AddCommissionDialog";
 import { EditCommissionDialog } from "@/components/Commission/EditCommissionDialog";
 import { DeleteCommissionAlert } from "@/components/Commission/DeleteCommissionAlert";
-import { useExport } from "@/hooks/useExport"; // <-- 3. IMPORT USE EXPORT
+import { useExport } from "@/hooks/useExport";
+import { cn } from "@/lib/utils"; // <-- 1. IMPORT BARU (untuk Calendar)
 
 // Tipe data untuk komisi
 export type CommissionData = {
@@ -56,6 +74,7 @@ export type CommissionData = {
   accounts: {
     id: string;
     username: string;
+    group_id: string | null; // <-- 2. Pastikan group_id ada di tipe
   };
 };
 
@@ -73,6 +92,12 @@ type CommissionSummary = {
   paid: number;
 };
 
+// Tipe untuk filter grup
+type Group = {
+  id: string;
+  name: string;
+};
+
 const Commissions = () => {
   const { profile } = useAuth();
   const [commissions, setCommissions] = useState<CommissionData[]>([]);
@@ -84,7 +109,14 @@ const Commissions = () => {
     delete: null,
   });
 
-  // --- 4. INISIALISASI HOOK EXPORT ---
+  // --- 3. STATE BARU UNTUK FILTER ---
+  const [filterDateStart, setFilterDateStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
+  // ------------------------------------
+
   const { exportToPDF, exportToCSV, isExporting } = useExport();
 
   const canManage =
@@ -106,7 +138,7 @@ const Commissions = () => {
   
   const formatCurrencyForExport = (amount: number | null) => {
     if (amount === null || isNaN(amount)) return "0";
-    return amount.toString(); // Export angka mentah untuk CSV
+    return amount.toString();
   };
 
   const formatDate = (dateString: string | null) => {
@@ -117,14 +149,20 @@ const Commissions = () => {
   
   const formatDateForExport = (dateString: string | null) => {
     if (!dateString) return "-";
-    return dateString; // Format YYYY-MM-DD
+    return dateString;
   };
 
-
-  const fetchCommissions = async () => {
+  // --- 4. MODIFIKASI FUNGSI FETCH DATA ---
+  const fetchCommissions = useCallback(async (
+    startDate: string,
+    endDate: string,
+    groupId: string,
+    search: string
+  ) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Gunakan !inner join agar data yang akunnya tidak ada tidak muncul
+      let query = supabase
         .from("commissions")
         .select(
           `
@@ -136,32 +174,64 @@ const Commissions = () => {
           net_commission,
           paid_commission,
           payment_date,
-          accounts ( id, username )
+          accounts!inner ( id, username, group_id )
         `
         )
+        // Filter Tanggal: Berdasarkan TANGGAL MULAI PERIODE
+        .gte("period_start", startDate)
+        .lte("period_start", endDate)
         .order("period_start", { ascending: false });
+
+      // Filter Grup (via tabel accounts)
+      if (groupId !== "all") {
+        query = query.eq("accounts.group_id", groupId);
+      }
+      
+      // Filter Search Term (username akun)
+      if (search.trim() !== "") {
+         query = query.ilike("accounts.username", `%${search.trim()}%`);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setCommissions(data as any);
       
+      // Hitung summary HANYA dari data yang terfilter
       const gross = data.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
       const net = data.reduce((acc, c) => acc + (c.net_commission || 0), 0);
       const paid = data.reduce((acc, c) => acc + (c.paid_commission || 0), 0);
       setSummary({ gross, net, paid });
 
     } catch (error: any) {
-      toast.error("Gagal memuat data komisi.");
+      toast.error("Gagal memuat data komisi.", {
+        description: error.message,
+      });
       console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // <-- useCallback
 
+  // --- 5. USEEFFECT UNTUK MEMANGGIL FETCH DATA SAAT FILTER BERUBAH ---
   useEffect(() => {
-    fetchCommissions();
+    if (profile) { // Pastikan profile sudah ada sebelum fetch
+        fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm);
+    }
+  }, [profile, fetchCommissions, filterDateStart, filterDateEnd, filterGroup, searchTerm]);
+
+  // --- 6. USEEFFECT BARU UNTUK FETCH GROUPS (HANYA SEKALI) ---
+  useEffect(() => {
+    const fetchGroups = async () => {
+        const { data, error } = await supabase.from("groups").select("id, name");
+        if (data) {
+            setAvailableGroups(data);
+        }
+    };
+    fetchGroups();
   }, []);
   
-  // --- 5. FUNGSI HANDLE EXPORT ---
+  // --- 7. FUNGSI HANDLE EXPORT (TETAP SAMA, KARENA 'commissions' SUDAH TERFILTER) ---
   const handleExport = (type: 'pdf' | 'csv') => {
     const columns = [
       { header: 'Akun', dataKey: 'account_username' },
@@ -174,11 +244,11 @@ const Commissions = () => {
       { header: 'Komisi Cair (Rp)', dataKey: 'paid_commission' },
     ];
     
+    // 'commissions' adalah state yang sudah terfilter oleh fetchData
     const exportData = commissions.map(c => ({
         ...c,
         account_username: c.accounts?.username || 'N/A',
         payment_date_formatted: formatDateForExport(c.payment_date),
-        // Gunakan angka mentah untuk CSV/PDF
         gross_commission: c.gross_commission || 0,
         net_commission: c.net_commission || 0,
         paid_commission: c.paid_commission || 0,
@@ -224,7 +294,7 @@ const Commissions = () => {
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Komisi Kotor</CardTitle>
+              <CardTitle className="text-sm font-medium">Komisi Kotor (Filter)</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -233,7 +303,7 @@ const Commissions = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Komisi Bersih</CardTitle>
+              <CardTitle className="text-sm font-medium">Komisi Bersih (Filter)</CardTitle>
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -242,7 +312,7 @@ const Commissions = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Komisi Cair</CardTitle>
+              <CardTitle className="text-sm font-medium">Komisi Cair (Filter)</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -253,126 +323,217 @@ const Commissions = () => {
           </Card>
         </div>
 
-        {/* Tabel Data */}
+        {/* --- 8. UI FILTER BARU --- */}
         <Card>
           <CardHeader>
-            {/* --- 6. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
-            <div className="flex justify-between items-center">
-              <CardTitle>Riwayat Komisi</CardTitle>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2" disabled={isExporting || commissions.length === 0}>
-                        <Download className="h-4 w-4" />
-                        {isExporting ? 'Mengekspor...' : 'Export'}
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Filter Tanggal Mulai */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="date-start">Tanggal Mulai Periode</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date-start"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !filterDateStart && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {filterDateStart ? format(parseISO(filterDateStart), "PPP") : <span>Pilih tanggal</span>}
                     </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
-                        Export PDF
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
-                        Export CSV
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-             {/* ------------------------------------------- */}
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center items-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={parseISO(filterDateStart)}
+                      onSelect={(date) => date && setFilterDateStart(format(date, "yyyy-MM-dd"))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Akun</TableHead>
-                      <TableHead>Periode</TableHead>
-                      <TableHead>Tgl. Komisi Cair</TableHead>
-                      <TableHead className="text-right">Kotor</TableHead>
-                      <TableHead className="text-right">Bersih</TableHead>
-                      <TableHead className="text-right">Cair</TableHead>
-                      {canManage && <TableHead>Aksi</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {commissions.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center h-24">
-                          Belum ada data komisi.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {commissions.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium">
-                          {c.accounts?.username || "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <Badge
-                              variant="secondary"
-                              className="w-fit"
-                            >
-                              {c.period}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground mt-1">
-                              {formatDate(c.period_start)} - {formatDate(c.period_end)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{formatDate(c.payment_date)}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(c.gross_commission)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(c.net_commission)}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-success">
-                          {formatCurrency(c.paid_commission)}
-                        </TableCell>
-                        {canManage && (
-                          <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    setDialogs({ ...dialogs, edit: c })
-                                  }
-                                >
-                                  <Edit className="mr-2 h-4 w-4" /> Edit
-                                </DropdownMenuItem>
-                                {canDelete && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive"
-                                      onClick={() =>
-                                        setDialogs({ ...dialogs, delete: c })
-                                      }
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" /> Hapus
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        )}
-                      </TableRow>
+              
+              {/* Filter Tanggal Selesai */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="date-end">Tanggal Selesai Periode</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date-end"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !filterDateEnd && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {filterDateEnd ? format(parseISO(filterDateEnd), "PPP") : <span>Pilih tanggal</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={parseISO(filterDateEnd)}
+                      onSelect={(date) => date && setFilterDateEnd(format(date, "yyyy-MM-dd"))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Filter Grup */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="filter-group">Group</Label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group">
+                    <SelectValue placeholder="Pilih Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Group</SelectItem>
+                    {availableGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
                     ))}
-                  </TableBody>
-                </Table>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-          </CardContent>
+
+            </div>
+          </CardHeader>
+
+          {/* Tabel Data */}
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Riwayat Komisi</CardTitle>
+                <div className="flex items-center gap-2">
+                  {/* Filter Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Cari username..."
+                      className="pl-10 w-full"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  {/* Tombol Export */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="gap-2" disabled={isExporting || commissions.length === 0}>
+                            <Download className="h-4 w-4" />
+                            {isExporting ? 'Mengekspor...' : 'Export'}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleExport('pdf')} disabled={isExporting}>
+                            Export PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
+                            Export CSV
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center items-center h-64">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Akun</TableHead>
+                        <TableHead>Periode</TableHead>
+                        <TableHead>Tgl. Komisi Cair</TableHead>
+                        <TableHead className="text-right">Kotor</TableHead>
+                        <TableHead className="text-right">Bersih</TableHead>
+                        <TableHead className="text-right">Cair</TableHead>
+                        {canManage && <TableHead>Aksi</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {commissions.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center h-24">
+                            Tidak ada data komisi untuk filter yang dipilih.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {commissions.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">
+                            {c.accounts?.username || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <Badge
+                                variant="secondary"
+                                className="w-fit"
+                              >
+                                {c.period}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground mt-1">
+                                {formatDate(c.period_start)} - {formatDate(c.period_end)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{formatDate(c.payment_date)}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(c.gross_commission)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(c.net_commission)}
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-success">
+                            {formatCurrency(c.paid_commission)}
+                          </TableCell>
+                          {canManage && (
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setDialogs({ ...dialogs, edit: c })
+                                    }
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" /> Edit
+                                  </DropdownMenuItem>
+                                  {canDelete && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive"
+                                        onClick={() =>
+                                          setDialogs({ ...dialogs, delete: c })
+                                        }
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </Card>
       </div>
 
@@ -383,7 +544,8 @@ const Commissions = () => {
             onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
             onSuccess={() => {
               setDialogs({ ...dialogs, add: false });
-              fetchCommissions(); 
+              // Panggil ulang fetch dengan filter saat ini
+              fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm); 
             }}
           />
           {dialogs.edit && (
@@ -394,7 +556,7 @@ const Commissions = () => {
               }
               onSuccess={() => {
                 setDialogs({ ...dialogs, edit: null });
-                fetchCommissions(); 
+                fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm);
               }}
               commission={dialogs.edit}
             />
@@ -407,7 +569,7 @@ const Commissions = () => {
               }
               onSuccess={() => {
                 setDialogs({ ...dialogs, delete: null });
-                fetchCommissions(); 
+                fetchCommissions(filterDateStart, filterDateEnd, filterGroup, searchTerm);
               }}
               commission={dialogs.delete}
             />
