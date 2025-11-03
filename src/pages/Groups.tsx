@@ -32,9 +32,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AddGroupDialog } from "@/components/Group/AddGroupDialog";
 import { DeleteGroupAlert } from "@/components/Group/DeleteGroupAlert";
-// --- IMPOR BARU ---
 import { EditGroupDialog } from "@/components/Group/EditGroupDialog";
-// --- AKHIR IMPOR BARU ---
 
 interface GroupData {
   id: string;
@@ -53,16 +51,32 @@ const Groups = () => {
   // State untuk dialog
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
-  // --- STATE BARU ---
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  // --- AKHIR STATE BARU ---
   const [selectedGroup, setSelectedGroup] = useState<GroupData | null>(null);
 
   const fetchGroups = async () => {
     setLoading(true);
     try {
+      // Memanggil fungsi SQL 'get_group_stats'
       const { data, error } = await supabase.rpc("get_group_stats");
-      if (error) throw error;
+      if (error) {
+        // Fallback jika RPC belum dibuat (untuk development)
+        if (error.code === '42883') { 
+            const { data: simpleData, error: simpleError } = await supabase.from("groups").select("id, name, description");
+            if (simpleError) throw simpleError;
+            
+            const mockedData: GroupData[] = (simpleData as any[]).map(g => ({
+                ...g,
+                employee_count: 0,
+                device_count: 0,
+                account_count: 0,
+            }));
+            setGroups(mockedData);
+            toast.warning("Fungsi get_group_stats belum terdeteksi. Menampilkan data dasar.");
+            return;
+        }
+        throw error;
+      }
       setGroups(data || []);
     } catch (error: any) {
       toast.error("Gagal mengambil data group.", {
@@ -84,12 +98,10 @@ const Groups = () => {
     setIsAlertOpen(true);
   };
 
-  // --- HANDLER DIPERBARUI ---
   const handleOpenEditDialog = (group: GroupData) => {
     setSelectedGroup(group);
-    setIsEditDialogOpen(true); // <--- INI DIA
+    setIsEditDialogOpen(true); 
   };
-  // --- AKHIR HANDLER DIPERBARUI ---
 
   return (
     <MainLayout>
@@ -184,7 +196,7 @@ const Groups = () => {
               </Card>
             ))}
 
-            {groups.length === 0 && (
+            {groups.length === 0 && !loading && (
               <p className="text-muted-foreground col-span-3 text-center">
                 Belum ada group. Silakan tambahkan group baru.
               </p>
@@ -194,35 +206,38 @@ const Groups = () => {
       </div>
 
       {/* --- RENDER SEMUA DIALOG --- */}
-      <AddGroupDialog
-        isOpen={isAddDialogOpen}
-        onClose={() => setIsAddDialogOpen(false)}
-        onSuccess={() => {
-          setIsAddDialogOpen(false);
-          fetchGroups();
-        }}
-      />
+      {canManage && (
+        <>
+          <AddGroupDialog
+            isOpen={isAddDialogOpen}
+            onClose={() => setIsAddDialogOpen(false)}
+            onSuccess={() => {
+              setIsAddDialogOpen(false);
+              fetchGroups();
+            }}
+          />
 
-      <DeleteGroupAlert
-        isOpen={isAlertOpen}
-        onClose={() => setIsAlertOpen(false)}
-        group={selectedGroup}
-        onSuccess={() => {
-          setIsAlertOpen(false);
-          fetchGroups();
-        }}
-      />
+          <DeleteGroupAlert
+            isOpen={isAlertOpen}
+            onClose={() => setIsAlertOpen(false)}
+            group={selectedGroup}
+            onSuccess={() => {
+              setIsAlertOpen(false);
+              fetchGroups();
+            }}
+          />
 
-      <EditGroupDialog
-        isOpen={isEditDialogOpen}
-        onClose={() => setIsEditDialogOpen(false)}
-        group={selectedGroup}
-        onSuccess={() => {
-          setIsEditDialogOpen(false);
-          fetchGroups(); // Refresh data setelah edit
-        }}
-      />
-      {/* --- AKHIR RENDER SEMUA DIALOG --- */}
+          <EditGroupDialog
+            isOpen={isEditDialogOpen}
+            onClose={() => setIsEditDialogOpen(false)}
+            group={selectedGroup}
+            onSuccess={() => {
+              setIsEditDialogOpen(false);
+              fetchGroups(); // Refresh data setelah edit
+            }}
+          />
+        </>
+      )}
     </MainLayout>
   );
 };

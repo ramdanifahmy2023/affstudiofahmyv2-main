@@ -55,7 +55,7 @@ export const EditGroupDialog = ({
   const [availableDevices, setAvailableDevices] = useState<SelectableItem[]>([]);
   const [availableAccounts, setAvailableAccounts] = useState<SelectableItem[]>([]);
 
-  // State untuk item yang dipilih
+  // State untuk item yang dipilih (hanya menyimpan ID)
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -67,18 +67,24 @@ export const EditGroupDialog = ({
     // Isi form dengan data group yang ada
     setName(group.name);
     setDescription(group.description || "");
+    // Reset selections untuk mencegah bug saat beralih group
+    setSelectedEmployees([]);
+    setSelectedDevices([]);
+    setSelectedAccounts([]);
+
 
     const fetchAvailableData = async () => {
       setLoadingData(true);
       try {
-        // Logika SELECT di sini lebih rumit:
-        // Kita perlu ambil item yang BELUM PUNYA group ATAU yang dimiliki group INI.
+        const groupId = group.id;
 
-        // 1. Ambil karyawan
+        // KUNCI: Query item yang group_id nya NULL ATAU SAMA DENGAN group.id (OR)
+        
+        // 1. Ambil karyawan 
         const { data: empData, error: empError } = await supabase
           .from("employees")
           .select("id, profiles ( full_name ), group_id")
-          .or(`group_id.is.null,group_id.eq.${group.id}`);
+          .or(`group_id.is.null,group_id.eq.${groupId}`);
         if (empError) throw empError;
         setAvailableEmployees(
           empData.map((e: any) => ({
@@ -86,10 +92,10 @@ export const EditGroupDialog = ({
             name: e.profiles.full_name,
           }))
         );
-        // Set checkbox untuk karyawan yang sudah ada di group ini
+        // Pre-select item yang sudah ter-assign ke group ini
         setSelectedEmployees(
           empData
-            .filter((e: any) => e.group_id === group.id)
+            .filter((e: any) => e.group_id === groupId)
             .map((e: any) => e.id)
         );
 
@@ -97,27 +103,28 @@ export const EditGroupDialog = ({
         const { data: devData, error: devError } = await supabase
           .from("devices")
           .select("id, device_id, group_id")
-          .or(`group_id.is.null,group_id.eq.${group.id}`);
+          .or(`group_id.is.null,group_id.eq.${groupId}`);
         if (devError) throw devError;
         setAvailableDevices(
           devData.map((d) => ({ id: d.id, name: d.device_id }))
         );
         setSelectedDevices(
-          devData.filter((d) => d.group_id === group.id).map((d) => d.id)
+          devData.filter((d) => d.group_id === groupId).map((d) => d.id)
         );
 
         // 3. Ambil accounts
         const { data: accData, error: accError } = await supabase
           .from("accounts")
           .select("id, username, group_id")
-          .or(`group_id.is.null,group_id.eq.${group.id}`);
+          .or(`group_id.is.null,group_id.eq.${groupId}`);
         if (accError) throw accError;
         setAvailableAccounts(
           accData.map((a) => ({ id: a.id, name: a.username }))
         );
         setSelectedAccounts(
-          accData.filter((a) => a.group_id === group.id).map((a) => a.id)
+          accData.filter((a) => a.group_id === groupId).map((a) => a.id)
         );
+
       } catch (error: any) {
         toast.error("Gagal memuat data untuk diedit.", {
           description: error.message,
@@ -158,7 +165,9 @@ export const EditGroupDialog = ({
     toast.info("Sedang memperbarui group...");
 
     try {
-      // Panggil fungsi SQL 'update_group_and_assign'
+      // Panggil fungsi RPC 'update_group_and_assign'
+      // Fungsi ini akan meng-update detail group, kemudian mengalokasikan
+      // item yang dipilih dan melepaskan item yang tidak dipilih.
       const { error } = await supabase.rpc("update_group_and_assign", {
         group_id_to_edit: group.id,
         new_name: name,
@@ -176,7 +185,7 @@ export const EditGroupDialog = ({
     } catch (error: any) {
       console.error(error);
       toast.error("Gagal memperbarui group.", {
-        description: error.message,
+        description: error.message.includes("violates unique constraint") ? "Nama Group sudah digunakan." : error.message,
       });
     } finally {
       setLoading(false);
@@ -218,13 +227,14 @@ export const EditGroupDialog = ({
           {loadingData ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-muted-foreground ml-2">Memuat data alokasi...</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {/* Karyawan */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <Users className="h-4 w-4" /> Karyawan
+                  <Users className="h-4 w-4" /> Karyawan ({availableEmployees.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableEmployees.map((emp) => (
@@ -251,13 +261,14 @@ export const EditGroupDialog = ({
                       </Label>
                     </div>
                   ))}
+                  {availableEmployees.length === 0 && <p className="text-xs text-muted-foreground p-2">Tidak ada karyawan yang tersedia/dialokasikan ke group ini.</p>}
                 </ScrollArea>
               </div>
 
               {/* Devices */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <Smartphone className="h-4 w-4" /> Device
+                  <Smartphone className="h-4 w-4" /> Device ({availableDevices.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableDevices.map((dev) => (
@@ -284,13 +295,14 @@ export const EditGroupDialog = ({
                       </Label>
                     </div>
                   ))}
+                  {availableDevices.length === 0 && <p className="text-xs text-muted-foreground p-2">Tidak ada device yang tersedia/dialokasikan ke group ini.</p>}
                 </ScrollArea>
               </div>
 
               {/* Akun */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4" /> Akun
+                  <KeyRound className="h-4 w-4" /> Akun ({availableAccounts.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableAccounts.map((acc) => (
@@ -317,6 +329,7 @@ export const EditGroupDialog = ({
                       </Label>
                     </div>
                   ))}
+                  {availableAccounts.length === 0 && <p className="text-xs text-muted-foreground p-2">Tidak ada akun yang tersedia/dialokasikan ke group ini.</p>}
                 </ScrollArea>
               </div>
             </div>

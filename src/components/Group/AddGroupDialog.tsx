@@ -59,30 +59,30 @@ export const AddGroupDialog = ({
     const fetchAvailableData = async () => {
       setLoadingData(true);
       try {
-        // 1. Ambil karyawan (employees join profiles)
+        // 1. Ambil karyawan (employees join profiles) yang group_id IS NULL
         const { data: empData, error: empError } = await supabase
           .from("employees")
           .select("id, profiles ( full_name )")
-          .is("group_id", null); // <-- Validasi KETAT
+          .is("group_id", null);
         if (empError) throw empError;
         setAvailableEmployees(empData.map((e: any) => ({
           id: e.id,
           name: e.profiles.full_name,
         })));
 
-        // 2. Ambil devices
+        // 2. Ambil devices yang group_id IS NULL
         const { data: devData, error: devError } = await supabase
           .from("devices")
           .select("id, device_id")
-          .is("group_id", null); // <-- Validasi KETAT
+          .is("group_id", null); 
         if (devError) throw devError;
         setAvailableDevices(devData.map(d => ({ id: d.id, name: d.device_id })));
 
-        // 3. Ambil accounts
+        // 3. Ambil accounts yang group_id IS NULL
         const { data: accData, error: accError } = await supabase
           .from("accounts")
           .select("id, username")
-          .is("group_id", null); // <-- Validasi KETAT
+          .is("group_id", null); 
         if (accError) throw accError;
         setAvailableAccounts(accData.map(a => ({ id: a.id, name: a.username })));
 
@@ -127,8 +127,8 @@ export const AddGroupDialog = ({
     toast.info("Sedang membuat group...");
 
     try {
-      // Kita panggil fungsi 'create_group_and_assign'
-      // yang akan kita buat di Langkah 3
+      // Memanggil fungsi RPC 'create_group_and_assign'
+      // Fungsi ini akan membuat group baru lalu mengalokasikan semua ID yang dipilih.
       const { error } = await supabase.rpc("create_group_and_assign", {
         group_name: name,
         group_desc: description,
@@ -145,7 +145,9 @@ export const AddGroupDialog = ({
 
     } catch (error: any) {
       console.error(error);
-      toast.error("Gagal membuat group.", { description: error.message });
+      toast.error("Gagal membuat group.", { 
+        description: error.message.includes("violates unique constraint") ? "Nama Group sudah digunakan." : error.message 
+      });
     } finally {
       setLoading(false);
     }
@@ -187,13 +189,14 @@ export const AddGroupDialog = ({
           {loadingData ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-muted-foreground ml-2">Memuat data alokasi...</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {/* Karyawan */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <Users className="h-4 w-4" /> Karyawan
+                  <Users className="h-4 w-4" /> Karyawan ({availableEmployees.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableEmployees.length > 0 ? (
@@ -214,7 +217,7 @@ export const AddGroupDialog = ({
               {/* Devices */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <Smartphone className="h-4 w-4" /> Device
+                  <Smartphone className="h-4 w-4" /> Device ({availableDevices.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableDevices.length > 0 ? (
@@ -235,7 +238,7 @@ export const AddGroupDialog = ({
               {/* Akun */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4" /> Akun
+                  <KeyRound className="h-4 w-4" /> Akun ({availableAccounts.length})
                 </Label>
                 <ScrollArea className="h-48 rounded-md border p-2">
                   {availableAccounts.length > 0 ? (
