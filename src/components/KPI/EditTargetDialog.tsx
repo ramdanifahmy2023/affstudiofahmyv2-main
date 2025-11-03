@@ -1,4 +1,4 @@
-// src/components/KPI/SetTargetDialog.tsx
+// src/components/KPI/EditTargetDialog.tsx
 
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -37,14 +37,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { KpiData } from "@/pages/KPI"; // Import tipe data KpiData
 
-// Tipe data Role yang valid (sesuai Enum user_role di DB)
-const VALID_TARGET_ROLES = ["staff", "leader", "admin", "viewer", "superadmin"] as const;
+// Tipe data Karyawan
+interface Employee {
+  id: string; // employee_id
+  full_name: string;
+}
 
 // Skema validasi Zod
 const kpiFormSchema = z.object({
-  // PERUBAHAN: Ganti employee_id dengan target_role
-  target_role: z.enum(VALID_TARGET_ROLES, { message: "Role target wajib dipilih." }),
+  employee_id: z.string().uuid({ message: "Karyawan wajib dipilih." }),
   target_month: z.date({ required_error: "Bulan target wajib diisi." }),
   sales_target: z.preprocess(
     (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
@@ -62,26 +65,16 @@ const kpiFormSchema = z.object({
 
 type KpiFormValues = z.infer<typeof kpiFormSchema>;
 
-interface SetTargetDialogProps {
+interface EditTargetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void; // Untuk refresh list
+  onSuccess: () => void;
+  kpiToEdit: KpiData | null; // Data KPI yang akan diedit
 }
 
-export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDialogProps) => {
+export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: EditTargetDialogProps) => {
   const [loading, setLoading] = useState(false);
-  // Hapus state [employees] karena kita tidak lagi menampilkan daftar karyawan
-
-  const form = useForm<KpiFormValues>({
-    resolver: zodResolver(kpiFormSchema),
-    defaultValues: {
-      target_role: "staff", // Default ke staff
-      target_month: startOfMonth(new Date()),
-      sales_target: 0,
-      commission_target: 0,
-      attendance_target: 22, // Default
-    },
-  });
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   // Helper format mata uang
   const formatCurrency = (value: number) => {
@@ -90,78 +83,93 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
     }).format(value);
   };
   
-  // Reset form saat dibuka
+  // Helper untuk membersihkan nilai yang akan dimasukkan ke form (diperlukan karena formatCurrency)
+  const parseNumber = (value: string | number | null): number => {
+    if (value === null) return 0;
+    return parseFloat(String(value).replace(/[^0-9]/g, "")) || 0;
+  };
+
+  const form = useForm<KpiFormValues>({
+    resolver: zodResolver(kpiFormSchema),
+    defaultValues: {
+      target_month: new Date(),
+      sales_target: 0,
+      commission_target: 0,
+      attendance_target: 22,
+      employee_id: undefined
+    },
+  });
+
+  // Fetch data karyawan (hanya untuk menampilkan nama di dropdown)
   useEffect(() => {
-    if (open) {
+    const fetchEmployees = async () => {
+      const { data } = await supabase
+        .from("employees")
+        .select("id, profiles ( full_name )");
+      
+      const mappedData = data?.map((emp: any) => ({
+        id: emp.id,
+        full_name: emp.profiles.full_name,
+      })) || [];
+      setEmployees(mappedData);
+    };
+    fetchEmployees();
+  }, []);
+  
+  // Isi form saat data KPI tersedia
+  useEffect(() => {
+    if (kpiToEdit && open) {
       form.reset({
-        target_role: "staff",
-        target_month: startOfMonth(new Date()),
-        sales_target: 0,
-        commission_target: 0,
-        attendance_target: 22,
+        // Kita tidak bisa langsung mendapatkan employee_id dari kpiToEdit
+        // Kita butuh kpiToEdit yang sudah join dengan employees.id
+        // Asumsi kpiToEdit di KPI.tsx sudah membawa employee_id (lihat tipe KpiData)
+        employee_id: (kpiToEdit as any).employee_id, 
+        target_month: new Date(kpiToEdit.target_month),
+        sales_target: parseNumber(kpiToEdit.sales_target),
+        commission_target: parseNumber(kpiToEdit.commission_target),
+        attendance_target: parseNumber(kpiToEdit.attendance_target),
       });
+      // Disable field karyawan dan bulan saat edit, karena itu adalah UNIQUE KEY
+      form.setValue("employee_id", (kpiToEdit as any).employee_id);
+      form.setValue("target_month", new Date(kpiToEdit.target_month));
     }
-  }, [open, form]);
+  }, [kpiToEdit, open, form]);
 
   const onSubmit = async (values: KpiFormValues) => {
+    if (!kpiToEdit) return;
     setLoading(true);
-    toast.info(`Mencari karyawan dengan role '${values.target_role}'...`);
-
     try {
-      // 1. Ambil SEMUA Employee ID yang memiliki role yang ditargetkan
-      const { data: employeeData, error: employeeError } = await supabase
-          .from("employees")
-          .select("id, profiles(role)")
-          .eq("profiles.role", values.target_role);
-
-      if (employeeError) throw employeeError;
-      
-      const employeeIds = employeeData.map((e: any) => e.id);
-
-      if (employeeIds.length === 0) {
-        toast.warning(`Tidak ada karyawan dengan role '${values.target_role}' ditemukan.`);
-        setLoading(false);
-        return;
-      }
-      
-      // 2. Siapkan payload untuk BATCH UPSERT
-      const targetMonthFormatted = format(values.target_month, "yyyy-MM-01");
-
-      const kpiPayload = employeeIds.map(empId => ({
-        employee_id: empId,
-        target_month: targetMonthFormatted,
-        sales_target: values.sales_target,
-        commission_target: values.commission_target,
-        attendance_target: values.attendance_target,
-        // Actuals dibiarkan default 0 (akan diupdate oleh trigger/proses lain)
-      }));
-
-      // 3. Lakukan Batch Upsert (Insert/Update)
-      const { error: upsertError } = await supabase
+      // Karena kita menggunakan UPSERT di SetTargetDialog, kita bisa menggunakan UPDATE di sini.
+      const { error } = await supabase
         .from("kpi_targets")
-        .upsert(kpiPayload, {
-          onConflict: 'employee_id, target_month'
-        });
+        .update({
+          sales_target: values.sales_target,
+          commission_target: values.commission_target,
+          attendance_target: values.attendance_target,
+        })
+        .eq("id", kpiToEdit.id);
 
-      if (upsertError) throw upsertError;
+      if (error) throw error;
 
-      toast.success(`${employeeIds.length} Target KPI berhasil disimpan untuk role ${values.target_role}.`);
-      onSuccess(); 
+      toast.success("Target KPI berhasil diperbarui.");
+      onSuccess(); // Refresh list & tutup dialog
     } catch (error: any) {
       console.error(error);
-      toast.error(`Gagal menyimpan target: ${error.message}`);
+      toast.error(`Terjadi kesalahan: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedEmployeeName = employees.find(e => e.id === form.watch("employee_id"))?.full_name || "Karyawan";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Set Target KPI Berdasarkan Role</DialogTitle>
+          <DialogTitle>Edit Target KPI</DialogTitle>
           <DialogDescription>
-            Tetapkan target bulanan yang sama untuk semua karyawan dengan role yang dipilih.
+            Perbarui target bulanan untuk {selectedEmployeeName} di bulan {kpiToEdit ? format(new Date(kpiToEdit.target_month), "MMM yyyy") : '-'}.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -170,25 +178,24 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="target_role"
+                name="employee_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Target Role</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormLabel>Karyawan</FormLabel>
+                    <Select value={field.value} disabled>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Pilih Role Target..." />
+                          <SelectValue placeholder="Pilih staff..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {VALID_TARGET_ROLES.map((role) => (
-                          <SelectItem key={role} value={role}>
-                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.full_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -198,28 +205,7 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Bulan Target</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button variant={"outline"} className={cn("text-left font-normal", !field.value && "text-muted-foreground")}>
-                            {field.value ? format(field.value, "MMM yyyy") : <span>Pilih bulan</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                          captionLayout="dropdown-buttons"
-                          fromYear={2020} 
-                          toYear={new Date().getFullYear() + 1}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
+                    <Input disabled value={field.value ? format(field.value, "MMM yyyy") : ''} />
                   </FormItem>
                 )}
               />
@@ -233,8 +219,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                   <FormItem>
                     <FormLabel>Target Omset (50%)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="50.000.000"
-                       onChange={(e) => field.onChange(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0)}
+                      <Input type="text" placeholder="50000000"
+                       onChange={(e) => field.onChange(parseNumber(e.target.value))}
                        value={formatCurrency(field.value || 0)}
                       />
                     </FormControl>
@@ -249,8 +235,8 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                   <FormItem>
                     <FormLabel>Target Komisi (30%)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="5.000.000"
-                       onChange={(e) => field.onChange(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0)}
+                      <Input type="text" placeholder="5000000"
+                       onChange={(e) => field.onChange(parseNumber(e.target.value))}
                        value={formatCurrency(field.value || 0)}
                       />
                     </FormControl>
@@ -265,13 +251,9 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
                   <FormItem>
                     <FormLabel>Target Hadir (20%)</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        max="31" 
-                        {...field} 
-                        onChange={(e) => field.onChange(parseInt(e.target.value, 10) || 0)}
-                        value={field.value === undefined ? '' : field.value}
+                      <Input type="number" min="1" max="31" {...field} 
+                       onChange={(e) => field.onChange(parseInt(e.target.value, 10) || 0)}
+                       value={field.value === undefined ? '' : field.value}
                       />
                     </FormControl>
                     <FormMessage />
@@ -286,7 +268,7 @@ export const SetTargetDialog = ({ open, onOpenChange, onSuccess }: SetTargetDial
               </Button>
               <Button type="submit" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {loading ? "Menyimpan Target..." : "Simpan Target"}
+                Simpan Perubahan
               </Button>
             </DialogFooter>
           </form>

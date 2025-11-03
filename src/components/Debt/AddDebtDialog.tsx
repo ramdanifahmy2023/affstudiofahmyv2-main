@@ -1,3 +1,5 @@
+// src/components/Debt/AddDebtDialog.tsx
+
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,10 +52,11 @@ const debtFormSchema = z.object({
   }),
   transaction_date: z.date({ required_error: "Tanggal wajib diisi." }),
   counterparty: z.string().min(3, { message: "Nama pihak wajib diisi." }),
-  amount: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(1, { message: "Nominal wajib diisi." })
-  ),
+  // === PERBAIKAN DI SINI: Menyimpan sebagai string mentah, validasi di onSubmit ===
+  amount: z.string() 
+    .min(1, { message: "Nominal wajib diisi." })
+    .refine((val) => parseFloat(val.replace(/[^0-9]/g, "")) > 0, { message: "Nominal harus lebih dari 0." }),
+  // ==============================================================================
   due_date: z.date().optional().nullable(),
   status: z.enum(["Belum Lunas", "Cicilan", "Lunas"], {
     required_error: "Status wajib dipilih.",
@@ -70,6 +73,21 @@ interface AddDebtDialogProps {
   onSuccess: () => void; // Untuk refresh list
 }
 
+// === HELPER UNTUK FORMAT/PARSE (Pola yang sama dengan Cashflow/Commission) ===
+const formatCurrencyInput = (value: string | number) => {
+   if (typeof value === 'number') value = value.toString();
+   if (!value) return "";
+   const num = value.replace(/[^0-9]/g, "");
+   if (num === "0") return "0";
+   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
+};
+
+const parseCurrencyInput = (value: string) => {
+   return value.replace(/[^0-9]/g, "");
+};
+// ============================================================================
+
+
 export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -80,7 +98,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
       type: undefined,
       transaction_date: new Date(),
       counterparty: "",
-      amount: 0,
+      amount: "", // Menggunakan string kosong sebagai default
       due_date: null,
       status: "Belum Lunas",
       description: "",
@@ -88,13 +106,6 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
     },
   });
   
-  // Helper format mata uang
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
-
   // Fetch data group untuk dropdown
   useEffect(() => {
     if (open) {
@@ -111,7 +122,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
         type: undefined,
         transaction_date: new Date(),
         counterparty: "",
-        amount: 0,
+        amount: "",
         due_date: null,
         status: "Belum Lunas",
         description: "",
@@ -123,14 +134,19 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
   const onSubmit = async (values: DebtFormValues) => {
     setLoading(true);
     try {
+      // Parse amount string menjadi number di sini
+      const finalAmount = parseFloat(values.amount.replace(/[^0-9]/g, ""));
+      if (isNaN(finalAmount) || finalAmount <= 0) {
+        throw new Error("Nominal tidak valid atau kosong.");
+      }
+
       const { error } = await supabase
         .from("debt_receivable")
         .insert({
           type: values.type,
-          // Tanggal transaksi (created_at) akan di-handle DB, kita gunakan tanggal dari form
           created_at: format(values.transaction_date, "yyyy-MM-dd"),
           counterparty: values.counterparty,
-          amount: values.amount,
+          amount: finalAmount, // Kirim sebagai number
           due_date: values.due_date ? format(values.due_date, "yyyy-MM-dd") : null,
           status: values.status,
           description: values.description,
@@ -230,9 +246,13 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
                   <FormItem>
                     <FormLabel>Nominal (IDR)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="1000000"
-                       onChange={(e) => field.onChange(formatCurrency(parseFloat(e.target.value.replace(/[^0-9]/g, "")) || 0))}
-                       value={formatCurrency(field.value || 0)}
+                      <Input 
+                        type="text" 
+                        placeholder="1.000.000"
+                        // --- GUNAKAN HELPER BARU ---
+                        value={formatCurrencyInput(field.value)}
+                        onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
+                        // -------------------------
                       />
                     </FormControl>
                     <FormMessage />
@@ -277,7 +297,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} />
+                        <Calendar mode="single" selected={field.value || undefined} onSelect={field.onChange} />
                       </PopoverContent>
                     </Popover>
                     <FormMessage />
@@ -292,13 +312,14 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Terkait Grup (Opsional)</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
+                  <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Pilih grup terkait..." />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                       <SelectItem value="none">-- Tidak ada group --</SelectItem>
                       {groups.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
@@ -318,7 +339,7 @@ export const AddDebtDialog = ({ open, onOpenChange, onSuccess }: AddDebtDialogPr
                   <FormItem>
                     <FormLabel>Keterangan (Opsional)</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Catatan tambahan..." {...field} />
+                      <Textarea placeholder="Catatan tambahan..." {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

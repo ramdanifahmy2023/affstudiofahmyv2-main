@@ -1,9 +1,11 @@
+// src/pages/KPI.tsx
+
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, Loader2, BarChart2, Star, Percent } from "lucide-react";
+import { Plus, Search, Download, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,6 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,11 +27,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { SetTargetDialog } from "@/components/KPI/SetTargetDialog";
+import { EditTargetDialog } from "@/components/KPI/EditTargetDialog"; // <-- IMPORT BARU
+import { DeleteTargetAlert } from "@/components/KPI/DeleteTargetAlert"; // <-- IMPORT BARU
 import { cn } from "@/lib/utils";
 
 // Tipe data dari Supabase
-type KpiData = {
+export type KpiData = {
   id: string;
+  employee_id: string; // Tambahkan untuk keperluan Edit/Delete
   target_month: string;
   sales_target: number;
   commission_target: number;
@@ -46,15 +57,27 @@ type CalculatedKpi = KpiData & {
   total_kpi: number;
 };
 
+// Tipe untuk dialog
+type DialogState = {
+  add: boolean;
+  edit: KpiData | null;
+  delete: KpiData | null;
+};
+
 const KPI = () => {
   const { profile } = useAuth();
   const [kpiData, setKpiData] = useState<CalculatedKpi[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [dialogs, setDialogs] = useState<DialogState>({
+    add: false,
+    edit: null,
+    delete: null,
+  });
 
   // Cek hak akses
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
   const canRead = canManage || profile?.role === "admin" || profile?.role === "viewer";
+  const canDelete = profile?.role === "superadmin";
 
   // Helper format
   const formatCurrency = (amount: number | null) => {
@@ -68,7 +91,8 @@ const KPI = () => {
   
   const formatDateMonth = (dateString: string) => {
     try {
-      return format(new Date(`${dateString}T00:00:00`), "MMM yyyy");
+      // Perbaikan kecil: Pastikan format tanggal aman untuk new Date()
+      return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "MMM yyyy");
     } catch (e) { return "-"; }
   }
   
@@ -104,10 +128,12 @@ const KPI = () => {
         return;
     }
     try {
+      // Tambahkan employee_id untuk keperluan Edit/Delete
       const { data, error } = await supabase
         .from("kpi_targets")
         .select(`
           id,
+          employee_id,
           target_month,
           sales_target,
           commission_target,
@@ -124,7 +150,6 @@ const KPI = () => {
       if (error) throw error;
       
       const calculatedData = calculateKpi(data as any);
-      // Sort by Total KPI
       calculatedData.sort((a, b) => b.total_kpi - a.total_kpi);
       setKpiData(calculatedData);
 
@@ -142,9 +167,17 @@ const KPI = () => {
   
   // Helper warna progress bar
   const getKpiColor = (kpi: number) => {
-    if (kpi >= 100) return "bg-success"; // Hijau [cite: 214]
-    if (kpi >= 70) return "bg-warning"; // Kuning [cite: 215]
-    return "bg-destructive"; // Merah [cite: 216]
+    if (kpi >= 100) return "bg-success"; // Hijau
+    if (kpi >= 70) return "bg-warning"; // Kuning
+    return "bg-destructive"; // Merah
+  };
+  
+  const handleEditClick = (kpi: KpiData) => {
+    setDialogs({ ...dialogs, edit: kpi });
+  };
+  
+  const handleDeleteClick = (kpi: KpiData) => {
+    setDialogs({ ...dialogs, delete: kpi });
   };
 
   return (
@@ -156,7 +189,7 @@ const KPI = () => {
             <p className="text-muted-foreground">Lacak pencapaian target tim dan individu.</p>
           </div>
           {canManage && (
-            <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
+            <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
               <Plus className="h-4 w-4" />
               Set Target Baru
             </Button>
@@ -195,13 +228,13 @@ const KPI = () => {
                     <TableHead>Komisi (Aktual/Target)</TableHead>
                     <TableHead>Absensi (Aktual/Target)</TableHead>
                     <TableHead className="w-[200px]">Total KPI</TableHead>
-                    <TableHead>Actions</TableHead>
+                    {canManage && <TableHead>Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {kpiData.length === 0 && (
                      <TableRow>
-                       <TableCell colSpan={8} className="text-center h-24">
+                       <TableCell colSpan={canManage ? 8 : 7} className="text-center h-24">
                          Belum ada data target KPI yang ditetapkan.
                        </TableCell>
                      </TableRow>
@@ -244,13 +277,32 @@ const KPI = () => {
                            </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {canManage && (
-                          <Button variant="ghost" size="sm">
-                            Edit
-                          </Button>
-                        )}
-                      </TableCell>
+                      {canManage && (
+                        <TableCell>
+                           <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditClick(item)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit Target
+                                </DropdownMenuItem>
+                                {canDelete && (
+                                  <DropdownMenuItem 
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteClick(item)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Hapus Target
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -260,16 +312,38 @@ const KPI = () => {
         </Card>
       </div>
 
-      {/* Render Dialog */}
+      {/* Render Dialogs */}
       {canManage && (
-         <SetTargetDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchKpiData(); // Refresh data
-           }}
-         />
+         <>
+           <SetTargetDialog
+             open={dialogs.add}
+             onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
+             onSuccess={() => {
+               setDialogs({ ...dialogs, add: false });
+               fetchKpiData(); // Refresh data
+             }}
+           />
+           <EditTargetDialog
+              open={!!dialogs.edit}
+              onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+              onSuccess={() => {
+                setDialogs({ ...dialogs, edit: null });
+                fetchKpiData(); // Refresh data
+              }}
+              kpiToEdit={dialogs.edit}
+            />
+            {canDelete && (
+              <DeleteTargetAlert
+                open={!!dialogs.delete}
+                onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
+                onSuccess={() => {
+                  setDialogs({ ...dialogs, delete: null });
+                  fetchKpiData(); // Refresh data
+                }}
+                kpiToDelete={dialogs.delete}
+              />
+            )}
+         </>
        )}
     </MainLayout>
   );

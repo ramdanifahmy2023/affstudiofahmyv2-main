@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Download, Loader2, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { Plus, Search, Download, Loader2, ArrowUpRight, ArrowDownLeft, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -15,16 +15,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { AddDebtDialog } from "@/components/Debt/AddDebtDialog";
-import { cn } from "@/lib/utils"; // <-- Dipastikan import ini ada dan benar
+import { EditDebtDialog } from "@/components/Debt/EditDebtDialog"; // <-- IMPORT BARU
+import { DeleteDebtAlert } from "@/components/Debt/DeleteDebtAlert"; // <-- IMPORT BARU
+import { cn } from "@/lib/utils";
 
-// Tipe data dari Supabase
-type DebtData = {
+// Tipe data dari Supabase (Diperluas untuk Edit/Delete)
+export type DebtData = {
   id: string;
   created_at: string;
   type: "debt" | "receivable";
@@ -32,7 +40,16 @@ type DebtData = {
   amount: number;
   due_date: string | null;
   status: string | null;
-  groups: { name: string } | null;
+  description: string | null; // Tambahkan ini untuk Edit
+  group_id: string | null; // Tambahkan ini untuk Edit
+  groups: { name: string, id: string } | null; // Tambahkan id group
+};
+
+// Tipe untuk dialog
+type DialogState = {
+  add: boolean;
+  edit: DebtData | null;
+  delete: DebtData | null;
 };
 
 const DebtReceivable = () => {
@@ -40,8 +57,14 @@ const DebtReceivable = () => {
   const [data, setData] = useState<DebtData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("debt");
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // State untuk Dialogs
+  const [dialogs, setDialogs] = useState<DialogState>({
+    add: false,
+    edit: null,
+    delete: null,
+  });
 
   // Hak akses berdasarkan blueprint
   const canCreate =
@@ -70,6 +93,7 @@ const DebtReceivable = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Ambil group_id dan description untuk kebutuhan Edit
       const { data, error } = await supabase
         .from("debt_receivable")
         .select(`
@@ -80,7 +104,9 @@ const DebtReceivable = () => {
           amount,
           due_date,
           status,
-          groups ( name )
+          description,
+          group_id,
+          groups ( name, id )
         `)
         .order("created_at", { ascending: false });
 
@@ -117,16 +143,30 @@ const DebtReceivable = () => {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case "Lunas":
-        return <Badge className="bg-green-600 hover:bg-green-700">Lunas</Badge>; // Menggunakan bg-success (hijau)
+        return <Badge className="bg-success">Lunas</Badge>;
       case "Cicilan":
         return <Badge variant="secondary">Cicilan</Badge>;
       case "Belum Lunas":
-        return <Badge className="bg-red-600 hover:bg-red-700">Belum Lunas</Badge>; // Menggunakan bg-danger (merah)
+        return <Badge className="bg-destructive">Belum Lunas</Badge>;
       default:
         return <Badge variant="outline">{status || "Pending"}</Badge>;
     }
   };
   
+  // Handlers untuk Dialog
+  const handleEditClick = (debt: DebtData) => {
+    setDialogs({ ...dialogs, edit: debt });
+  };
+  
+  const handleDeleteClick = (debt: DebtData) => {
+    setDialogs({ ...dialogs, delete: debt });
+  };
+  
+  const handleSuccess = () => {
+     setDialogs({ add: false, edit: null, delete: null });
+     fetchData(); // Refresh data
+  }
+
   const renderTable = (items: DebtData[]) => (
     <Table>
       <TableHeader>
@@ -169,8 +209,26 @@ const DebtReceivable = () => {
               </TableCell>
               {canManage && (
                 <TableCell>
-                  {/* TODO: Implement Edit Debt/Receivable Dialog */}
-                  <Button variant="ghost" size="sm" disabled>Edit</Button> 
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditClick(item)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDeleteClick(item)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Hapus
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                 </TableCell>
               )}
             </TableRow>
@@ -189,7 +247,7 @@ const DebtReceivable = () => {
             <p className="text-muted-foreground">Lacak semua kewajiban dan tagihan.</p>
           </div>
           {canCreate && (
-            <Button className="gap-2" onClick={() => setIsModalOpen(true)}>
+            <Button className="gap-2" onClick={() => setDialogs({ ...dialogs, add: true })}>
               <Plus className="h-4 w-4" />
               Tambah Catatan
             </Button>
@@ -291,16 +349,29 @@ const DebtReceivable = () => {
         </Card>
       </div>
       
-      {/* Render Dialog */}
+      {/* RENDER SEMUA DIALOG */}
       {canCreate && (
          <AddDebtDialog
-           open={isModalOpen}
-           onOpenChange={setIsModalOpen}
-           onSuccess={() => {
-             setIsModalOpen(false); // Tutup dialog
-             fetchData(); // Refresh data
-           }}
+           open={dialogs.add}
+           onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
+           onSuccess={handleSuccess}
          />
+       )}
+       {canManage && (
+         <>
+           <EditDebtDialog
+             open={!!dialogs.edit}
+             onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+             onSuccess={handleSuccess}
+             debt={dialogs.edit}
+           />
+           <DeleteDebtAlert
+             open={!!dialogs.delete}
+             onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
+             onSuccess={handleSuccess}
+             debt={dialogs.delete}
+           />
+         </>
        )}
     </MainLayout>
   );
