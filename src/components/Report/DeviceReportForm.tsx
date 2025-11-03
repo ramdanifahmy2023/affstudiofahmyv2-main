@@ -39,6 +39,9 @@ interface DeviceReportFormProps {
   onRemove: (id: string) => void;
   devices: { id: string; name: string }[];
   accounts: { id: string; name: string }[];
+  // --- TAMBAHAN: FUNGSI VALIDASI ---
+  onValidate: (id: string, isValid: boolean) => void;
+  // ---------------------------------
 }
 
 // --- 2. HAPUS HELPER LOKAL (parseCurrency & formatCurrencyInput) ---
@@ -52,6 +55,7 @@ export const DeviceReportForm = ({
   onRemove,
   devices,
   accounts,
+  onValidate, // <-- TERIMA FUNGSI BARU
 }: DeviceReportFormProps) => {
   const [openingBalanceDisabled, setOpeningBalanceDisabled] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
@@ -61,71 +65,82 @@ export const DeviceReportForm = ({
     const applyLogic = async () => {
       setWarning(null);
 
+      const { shift, liveStatus, deviceId } = report;
+
       // 1. Logic Status Live "Mati/Relive" (Prioritas utama)
-      if (report.liveStatus === "Mati/Relive") {
+      // Aturan: jika pilih status live mati & relive maka saldo awal 0 
+      if (liveStatus === "Mati/Relive") {
         onUpdate(report.id, "openingBalance", 0);
         setOpeningBalanceDisabled(true);
         return;
       }
 
       // 2. Logic Shift 1
-      if (report.shift === "1") {
+      // Aturan: Jika pilih "Shift 1", saldo awal otomatis 0 
+      if (shift === "1") {
         onUpdate(report.id, "openingBalance", 0);
         setOpeningBalanceDisabled(true);
         return;
       }
 
       // 3. Logic Shift 2/3 (dan Status "Lancar")
-      setOpeningBalanceDisabled(false); 
+      // Aturan: Jika pilih "Shift 2" atau "Shift 3", saldo awal otomatis diisi dari saldo akhir shift sebelumnya.
+      if (shift && shift !== "1" && deviceId && liveStatus === "Lancar") {
+        
+        setOpeningBalanceDisabled(true); // Kunci input saldo saat sedang mencari/sukses
 
-      if (
-        report.shift &&
-        report.shift !== "1" &&
-        report.deviceId &&
-        report.liveStatus === "Lancar"
-      ) {
-        // --- INI ADALAH BAGIAN YANG DISEMPURNAKAN ---
         try {
-          // Format tanggal ke YYYY-MM-DD agar cocok dengan query Supabase
           const formattedDate = format(reportDate, "yyyy-MM-dd");
-          const previousShift = (parseInt(report.shift) - 1).toString();
+          // Shift sebelumnya adalah angka shift sekarang - 1
+          const previousShift = (parseInt(shift) - 1).toString();
 
           const { data, error } = await supabase
             .from("daily_reports")
             .select("closing_balance")
-            .eq("device_id", report.deviceId) // Menggunakan ID Device yang dipilih
+            .eq("device_id", deviceId) 
             .eq("report_date", formattedDate)
-            .eq("shift_number", previousShift) // Menggunakan kolom 'shift_number'
-            .order("submitted_at", { ascending: false }) // Ambil laporan terbaru
+            .eq("shift_number", previousShift) 
+            .order("submitted_at", { ascending: false })
             .limit(1)
             .maybeSingle(); 
 
           if (error || !data) {
-            console.warn("Supabase fetch error/No data:", error);
-            setWarning("Belum ada data saldo dari shift sebelumnya.");
+            setWarning(`Belum ada Laporan Harian untuk Shift ${previousShift} di Device ini.`);
             onUpdate(report.id, "openingBalance", 0);
           } else {
             // Sukses! Set Omset Awal = Omset Akhir shift sebelumnya
             onUpdate(report.id, "openingBalance", data.closing_balance);
-            setOpeningBalanceDisabled(true); // Kunci inputnya
           }
         } catch (err) {
           console.error("Gagal mengambil saldo sebelumnya:", err);
           toast.error("Gagal mengambil saldo sebelumnya.");
           onUpdate(report.id, "openingBalance", 0);
+          setWarning("Gagal mengambil saldo dari server.");
         }
-        // --- AKHIR BAGIAN YANG DISEMPURNAKAN ---
       } else {
-        // Jika shift 2/3 tapi belum pilih device atau status
-        if (report.shift !== "1") {
-          onUpdate(report.id, "openingBalance", 0);
-        }
+        // Jika belum memilih shift/device/status live (default behavior)
+        onUpdate(report.id, "openingBalance", 0);
+        setOpeningBalanceDisabled(false);
       }
     };
 
     applyLogic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report.shift, report.liveStatus, report.deviceId, reportDate, report.id, onUpdate]);
+  }, [report.shift, report.liveStatus, report.deviceId, reportDate, report.id]);
+  
+  // LOGIC VALIDASI SISI KLIEN (Wajib)
+  useEffect(() => {
+    // Periksa apakah semua field wajib (selain notes) sudah terisi
+    const isValid = !!report.shift && 
+                    !!report.deviceId && 
+                    !!report.accountId && 
+                    !!report.liveStatus && 
+                    !!report.kategoriProduk &&
+                    report.closingBalance >= report.openingBalance;
+
+    onValidate(report.id, isValid);
+
+  }, [report.shift, report.deviceId, report.accountId, report.liveStatus, report.kategoriProduk, report.openingBalance, report.closingBalance, report.id, onValidate]);
 
 
   return (
@@ -144,7 +159,7 @@ export const DeviceReportForm = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Shift */}
             <div className="space-y-2">
-              <Label htmlFor={`shift-${report.id}`}>Shift</Label>
+              <Label htmlFor={`shift-${report.id}`}>Shift *</Label>
               <Select
                 value={report.shift}
                 onValueChange={(val) => onUpdate(report.id, "shift", val)}
@@ -161,7 +176,7 @@ export const DeviceReportForm = ({
             </div>
             {/* Device */}
             <div className="space-y-2">
-              <Label htmlFor={`device-${report.id}`}>Device</Label>
+              <Label htmlFor={`device-${report.id}`}>Device *</Label>
               <Select
                 value={report.deviceId}
                 onValueChange={(val) => onUpdate(report.id, "deviceId", val)}
@@ -180,7 +195,7 @@ export const DeviceReportForm = ({
             </div>
             {/* Akun */}
             <div className="space-y-2">
-              <Label htmlFor={`account-${report.id}`}>Akun</Label>
+              <Label htmlFor={`account-${report.id}`}>Akun *</Label>
               <Select
                 value={report.accountId}
                 onValueChange={(val) => onUpdate(report.id, "accountId", val)}
@@ -199,7 +214,7 @@ export const DeviceReportForm = ({
             </div>
             {/* Status Live */}
             <div className="space-y-2">
-              <Label htmlFor={`status-${report.id}`}>Status Live</Label>
+              <Label htmlFor={`status-${report.id}`}>Status Live *</Label>
               <Select
                 value={report.liveStatus}
                 onValueChange={(val) => onUpdate(report.id, "liveStatus", val)}
@@ -217,7 +232,7 @@ export const DeviceReportForm = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Kategori Produk */}
             <div className="space-y-2 md:col-span-1">
-              <Label htmlFor={`kategori-${report.id}`}>Kategori Produk</Label>
+              <Label htmlFor={`kategori-${report.id}`}>Kategori Produk *</Label>
               <Input
                 id={`kategori-${report.id}`}
                 placeholder="cth: Skincare"
@@ -254,7 +269,7 @@ export const DeviceReportForm = ({
             </div>
             {/* Omset Akhir */}
             <div className="space-y-2 md:col-span-1">
-              <Label htmlFor={`closing-${report.id}`}>Omset Akhir</Label>
+              <Label htmlFor={`closing-${report.id}`}>Omset Akhir *</Label>
               <Input
                 id={`closing-${report.id}`}
                 placeholder="0"
@@ -268,6 +283,11 @@ export const DeviceReportForm = ({
                   )
                 }
               />
+              {report.closingBalance < report.openingBalance && (
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> Omset Akhir tidak boleh &lt; Omset Awal.
+                  </p>
+              )}
             </div>
             {/* Total Omset (Calculated) */}
             <div className="space-y-2 md:col-span-1">

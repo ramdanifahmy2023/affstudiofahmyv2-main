@@ -32,6 +32,16 @@ import { cn } from "@/lib/utils";
 // --- 1. IMPORT BARU UNTUK TANGGAL ---
 import { format, subDays, eachDayOfInterval, parseISO } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
+// --- TAMBAHAN IMPORT UNTUK FILTER ---
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+// ------------------------------------
 
 // --- INTERFACE & HELPER DARI PERFORMANCE.TS (Untuk Ranking/Chart) ---
 interface EmployeePerformance {
@@ -53,6 +63,9 @@ type SalesTrendData = {
   sales: number;
   commission: number;
 };
+
+// --- Tipe Data Baru untuk Filter Group ---
+type Group = { id: string; name: string };
 // ------------------------------------
 
 
@@ -92,6 +105,11 @@ const Dashboard = () => {
   const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   // ----------------------------------------------------
   
+  // --- TAMBAHAN FILTER GROUP ---
+  const [filterGroup, setFilterGroup] = useState("all");
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
+  // -----------------------------
+  
   // State untuk Data Real-time
   const [loadingRanking, setLoadingRanking] = useState(true);
   const [loadingCharts, setLoadingCharts] = useState(true);
@@ -121,7 +139,7 @@ const Dashboard = () => {
     }).format(value);
     
   // --- 4. FUNGSI BARU UNTUK MENGGABUNGKAN FETCH ---
-  const fetchData = useCallback(async (startDate: string, endDate: string) => {
+  const fetchData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
     setLoadingRanking(true);
     setLoadingCharts(true);
     
@@ -135,21 +153,20 @@ const Dashboard = () => {
     
     // Panggil kedua fungsi fetch secara paralel
     await Promise.all([
-      fetchRankingData(startDate, endDate),
-      fetchChartData(startDate, endDate)
+      fetchRankingData(startDate, endDate, groupId), // PASS groupId
+      fetchChartData(startDate, endDate, groupId)    // PASS groupId
     ]);
-  }, []); // useCallback dependencies kosong, karena fungsi fetch di dalamnya sudah useCallback
+  }, []);
 
   
   // --- FETCH RANKING DATA (REAL) ---
-  // (Menerima parameter tanggal)
-  const fetchRankingData = useCallback(async (startDate: string, endDate: string) => {
+  // (Menerima parameter tanggal DAN GROUP)
+  const fetchRankingData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
     setLoadingRanking(true);
     try {
-        // Query KPI berdasarkan rentang bulan (agak tricky, kita ambil 2 bulan terakhir)
         const twoMonthsAgo = format(subDays(parseISO(startDate), 30), "yyyy-MM-dd");
     
-        const { data: kpiResults, error: kpiError } = await supabase
+        let query = supabase
             .from('kpi_targets')
             .select(`
                 sales_target,
@@ -158,16 +175,22 @@ const Dashboard = () => {
                 actual_sales,
                 actual_commission,
                 actual_attendance,
-                employees (
+                employees!inner (
                     id,
                     profiles ( full_name ),
-                    groups ( name )
+                    groups ( name, id )
                 ),
                 target_month
             `)
-            .gte('target_month', twoMonthsAgo) // Ambil data 2 bulan terakhir
+            .gte('target_month', twoMonthsAgo)
             .order('target_month', { ascending: false });
 
+        // Terapkan filter grup pada join employees
+        if (groupId !== "all") {
+             query = query.eq('employees.group_id', groupId);
+        }
+
+        const { data: kpiResults, error: kpiError } = await query;
         if (kpiError) throw kpiError;
         
         const rawData = kpiResults as any[];
@@ -208,17 +231,22 @@ const Dashboard = () => {
   }, []);
   
   // --- FUNGSI BARU: FETCH DATA UNTUK CHARTS ---
-  // (Menerima parameter tanggal)
-  const fetchChartData = useCallback(async (startDate: string, endDate: string) => {
+  // (Menerima parameter tanggal DAN GROUP)
+  const fetchChartData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
     setLoadingCharts(true);
     try {
       // 1. Fetch Commission Breakdown (Berdasarkan filter tanggal)
-      const { data: commsData, error: commsError } = await supabase
+      let commsQuery = supabase
         .from('commissions')
-        .select('gross_commission, net_commission, paid_commission')
+        .select('gross_commission, net_commission, paid_commission, accounts!inner(group_id)')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate);
         
+      if (groupId !== 'all') {
+          commsQuery = commsQuery.eq('accounts.group_id', groupId); // Terapkan filter grup
+      }
+        
+      const { data: commsData, error: commsError } = await commsQuery;
       if (commsError) throw commsError;
 
       const gross = commsData.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
@@ -231,15 +259,20 @@ const Dashboard = () => {
         { name: "Cair", value: paid, color: CHART_COLORS.yellow },
       ]);
 
-      // 2. Fetch Group Performance (dari KPI data, query ini tidak terpengaruh filter tanggal)
-      // (Kita asumsikan ini adalah data "All Time" seperti sebelumnya)
-      const { data: groupPerfData, error: groupPerfError } = await supabase
+      // 2. Fetch Group Performance (dari KPI data, All Time)
+      let groupPerfQuery = supabase
         .from('kpi_targets')
         .select(`
           actual_sales,
-          employees ( groups ( name ) )
+          employees!inner ( groups ( name, id ) )
         `);
+      
+      // Filter Group di sini juga (untuk Group Performance chart)
+      if (groupId !== 'all') {
+          groupPerfQuery = groupPerfQuery.eq('employees.groups.id', groupId);
+      }
         
+      const { data: groupPerfData, error: groupPerfError } = await groupPerfQuery;
       if (groupPerfError) throw groupPerfError;
       
       const groupOmsetMap = new Map<string, number>();
@@ -257,11 +290,16 @@ const Dashboard = () => {
       setGroupData(groupDataArray);
       
       // 3. Fetch Account Platform Breakdown (Tidak terpengaruh filter tanggal)
-      const { data: accData, error: accError } = await supabase
+      let accQuery = supabase
         .from('accounts')
-        .select('platform')
+        .select('platform, group_id')
         .in('platform', ['shopee', 'tiktok']);
         
+      if (groupId !== 'all') {
+         accQuery = accQuery.eq('group_id', groupId); // Terapkan filter grup
+      }
+        
+      const { data: accData, error: accError } = await accQuery;
       if (accError) throw accError;
       
       let shopeeCount = 0;
@@ -276,21 +314,36 @@ const Dashboard = () => {
         { name: "TikTok", value: tiktokCount, color: CHART_COLORS.tiktok },
       ]);
       
-      // --- 4. FETCH DATA UNTUK SALES TREND ---
+      // 4. FETCH DATA UNTUK SALES TREND (DAILY REPORTS & COMMISSIONS)
+      
       // A. Fetch Daily Reports (Omset)
-      const { data: salesData, error: salesError } = await supabase
+      let salesQuery = supabase
           .from('daily_reports')
-          .select('report_date, total_sales')
+          .select('report_date, total_sales, devices!inner(group_id)')
           .gte('report_date', startDate)
           .lte('report_date', endDate);
+          
+      if (groupId !== 'all') {
+           // Gunakan .filter() untuk memastikan filter group_id di join devices
+           salesQuery = salesQuery.eq('devices.group_id', groupId); 
+      }
+          
+      const { data: salesData, error: salesError } = await salesQuery;
       if (salesError) throw salesError;
       
       // B. Fetch Commissions (Komisi Cair)
-      const { data: commissionTrendData, error: commissionTrendError } = await supabase
+      let commTrendQuery = supabase
           .from('commissions')
-          .select('payment_date, paid_commission')
+          .select('payment_date, paid_commission, accounts!inner(group_id)')
           .gte('payment_date', startDate)
           .lte('payment_date', endDate);
+          
+      if (groupId !== 'all') {
+           // Gunakan .filter() untuk memastikan filter group_id di join accounts
+           commTrendQuery = commTrendQuery.eq('accounts.group_id', groupId); 
+      }
+          
+      const { data: commissionTrendData, error: commissionTrendError } = await commTrendQuery;
       if (commissionTrendError) throw commissionTrendError;
       
       // C. Proses & Gabungkan Data
@@ -325,7 +378,6 @@ const Dashboard = () => {
       });
       
       setSalesTrendData(Array.from(trendMap.values()));
-      // --- AKHIR FETCH SALES TREND ---
 
     } catch (error: any) {
         toast.error("Gagal memuat data Charts Dashboard.");
@@ -335,16 +387,32 @@ const Dashboard = () => {
     }
   }, []);
   
+  
+  // --- Fetch Groups Effect ---
+  useEffect(() => {
+    const fetchGroups = async () => {
+        const { data, error } = await supabase.from("groups").select("id, name");
+        if (data) {
+            setAvailableGroups(data);
+        } else if (error) {
+            toast.error("Gagal memuat daftar grup.");
+        }
+    };
+    fetchGroups();
+  }, []);
+  
   // --- 5. UPDATE USEEFFECT UNTUK MEMANGGIL FETCHDATA ---
   useEffect(() => {
     if (profile) {
-        fetchData(filterDateStart, filterDateEnd);
+        // Panggil fetchData dengan semua filter
+        fetchData(filterDateStart, filterDateEnd, filterGroup);
     }
-  }, [profile, fetchData, filterDateStart, filterDateEnd]);
+  }, [profile, fetchData, filterDateStart, filterDateEnd, filterGroup]); // ADD filterGroup
   
   // --- 6. UPDATE HANDLER FILTER ---
   const handleFilterSubmit = () => {
-    fetchData(filterDateStart, filterDateEnd);
+    // Memanggil fetchData sudah cukup karena dipicu oleh perubahan state filter
+    fetchData(filterDateStart, filterDateEnd, filterGroup);
   };
   
   // Filter Ranking Data berdasarkan Search Term
@@ -353,8 +421,6 @@ const Dashboard = () => {
     e.group.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // (Data dummy dihapus)
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -382,6 +448,23 @@ const Dashboard = () => {
                   onChange={(e) => setFilterDateEnd(e.target.value)}
                 />
               </div>
+              {/* --- TAMBAHAN FILTER GROUP --- */}
+              <div className="flex-1 min-w-[150px] space-y-1">
+                <Label htmlFor="filter-group">Group</Label>
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger id="filter-group" className="w-full">
+                    <SelectValue placeholder="Semua Group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Group</SelectItem>
+                    {availableGroups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* --- AKHIR TAMBAHAN FILTER GROUP --- */}
+              
               {/* --- 7. AKTIFKAN TOMBOL FILTER --- */}
               <Button onClick={handleFilterSubmit} className="gap-2" disabled={loadingCharts || loadingRanking}>
                 { (loadingCharts || loadingRanking) ? (
@@ -405,7 +488,7 @@ const Dashboard = () => {
           <Card className="lg:col-span-2"> 
             <CardHeader>
               <CardTitle>Tren Omset & Komisi Cair</CardTitle>
-               <CardDescription>Menampilkan data harian berdasarkan filter tanggal di atas.</CardDescription>
+               <CardDescription>Menampilkan data harian berdasarkan filter tanggal dan group.</CardDescription>
             </CardHeader>
             <CardContent>
               {loadingCharts ? (
@@ -492,7 +575,7 @@ const Dashboard = () => {
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Performa Group (Top 5 Omset)</CardTitle>
-              <CardDescription>Berdasarkan total omset aktual di KPI (All Time).</CardDescription>
+              <CardDescription>Berdasarkan total omset aktual di KPI (All Time, sesuai filter Group).</CardDescription>
             </CardHeader>
             <CardContent>
              {loadingCharts ? (
@@ -524,7 +607,7 @@ const Dashboard = () => {
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Breakdown Platform Akun</CardTitle>
-              <CardDescription>Total akun terdaftar (All Time).</CardDescription>
+              <CardDescription>Total akun terdaftar (All Time, sesuai filter Group).</CardDescription>
             </CardHeader>
             <CardContent>
             {loadingCharts ? (
@@ -560,7 +643,7 @@ const Dashboard = () => {
           <Card className="lg:col-span-1">
             <CardHeader>
               <CardTitle>Top Performers (Bulan Terakhir)</CardTitle>
-              <CardDescription>Berdasarkan Total KPI aktual.</CardDescription>
+              <CardDescription>Berdasarkan Total KPI aktual (sesuai filter Group).</CardDescription>
               <Input 
                 placeholder="Cari nama karyawan..."
                 className="w-full mt-2"

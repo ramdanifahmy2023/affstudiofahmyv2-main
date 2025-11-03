@@ -59,6 +59,9 @@ const DailyReport = () => {
   const [loadingData, setLoadingData] = useState(false); 
   
   const [reportHistory, setReportHistory] = useState<ReportHistoryRecord[]>([]);
+  // --- TAMBAHAN STATE VALIDASI ---
+  const [reportValidation, setReportValidation] = useState<Record<string, boolean>>({});
+  // -----------------------------
 
   // State untuk multi-device reports
   const [deviceReports, setDeviceReports] = useState<DeviceReport[]>([
@@ -186,10 +189,11 @@ const DailyReport = () => {
       toast.warning("Anda sudah mencapai batas maksimum 10 device.");
       return;
     }
+    const newId = uuidv4();
     setDeviceReports([
       ...deviceReports,
       {
-        id: uuidv4(),
+        id: newId,
         deviceId: "",
         accountId: "",
         shift: "",
@@ -199,6 +203,8 @@ const DailyReport = () => {
         closingBalance: 0,
       },
     ]);
+    // Tambahkan validasi awal (false)
+    setReportValidation(prev => ({ ...prev, [newId]: false }));
   };
 
   // Handler untuk menghapus device report
@@ -208,6 +214,12 @@ const DailyReport = () => {
       return;
     }
     setDeviceReports(deviceReports.filter((report) => report.id !== id));
+    // Hapus status validasi
+    setReportValidation(prev => {
+        const newState = { ...prev };
+        delete newState[id];
+        return newState;
+    });
   };
 
   // Handler untuk update data di child component
@@ -222,6 +234,15 @@ const DailyReport = () => {
       )
     );
   };
+  
+  // --- FUNGSI BARU: UPDATE VALIDASI ---
+  const handleDeviceValidation = (id: string, isValid: boolean) => {
+      setReportValidation(prev => ({ ...prev, [id]: isValid }));
+  };
+  
+  const isAllValid = Object.values(reportValidation).every(Boolean) && deviceReports.length > 0;
+  // ---------------------------------
+  
 
   // FUNGSI HANDLE SUBMIT
   const handleSubmit = async (e: React.FormEvent) => {
@@ -231,35 +252,18 @@ const DailyReport = () => {
       toast.error("Gagal memuat data karyawan. Silakan login ulang.");
       return;
     }
+    
+    // Final check validasi
+    if (!isAllValid) {
+         toast.error("Terdapat data laporan yang belum lengkap atau tidak valid.", {
+             description: "Mohon periksa semua field yang bertanda (*) dan pastikan Omset Akhir ≥ Omset Awal."
+         });
+         return;
+    }
+
 
     setLoading(true);
     toast.info("Sedang mengirim laporan...");
-
-    // Validasi
-    for (const report of deviceReports) {
-      if (
-        !report.shift ||
-        !report.deviceId ||
-        !report.accountId ||
-        !report.liveStatus ||
-        !report.kategoriProduk 
-      ) {
-        toast.error(
-          `Laporan device (ID: ...${report.id.slice(-4)}) belum lengkap.`
-        );
-        setLoading(false);
-        return;
-      }
-      if (report.closingBalance < report.openingBalance) {
-        toast.error(
-          `Omset Akhir tidak boleh lebih kecil dari Omset Awal (ID: ...${report.id.slice(
-            -4
-          )}).`
-        );
-        setLoading(false);
-        return;
-      }
-    }
 
     try {
       const formattedDate = format(date, "yyyy-MM-dd");
@@ -271,7 +275,7 @@ const DailyReport = () => {
         employee_id: employee.id, 
         report_date: formattedDate,
         
-        shift_status: shiftStatusEnum(report), // Menggunakan shift_status enum
+        shift_status: shiftStatusEnum(report), 
         
         opening_balance: report.openingBalance,
         closing_balance: report.closingBalance,
@@ -296,8 +300,6 @@ const DailyReport = () => {
 
       // --- PERBAIKAN LOGIKA ABSENSI ---
       // Gunakan UPSERT untuk mencatat check_out.
-      // Ini akan meng-update jika (employee_id, attendance_date) sudah ada (dari check_in),
-      // atau membuat data baru jika staf lupa check_in.
       const { error: attendanceError } = await supabase
         .from('attendance')
         .upsert(
@@ -305,7 +307,7 @@ const DailyReport = () => {
             employee_id: employee.id,
             attendance_date: formattedDate,
             check_out: new Date().toISOString(),
-            status: 'present', // Set status 'present' jika ini adalah data baru
+            status: 'present', 
           },
           {
             onConflict: 'employee_id, attendance_date',
@@ -321,9 +323,10 @@ const DailyReport = () => {
 
       // Reset form
       setNotes("");
+      const initialReportId = uuidv4();
       setDeviceReports([
         {
-          id: uuidv4(),
+          id: initialReportId,
           deviceId: "",
           accountId: "",
           shift: "",
@@ -333,6 +336,8 @@ const DailyReport = () => {
           closingBalance: 0,
         },
       ]);
+      // Reset validasi
+      setReportValidation({ [initialReportId]: false });
     } catch (error: any) {
       console.error(error);
       toast.error(
@@ -459,6 +464,7 @@ const DailyReport = () => {
               onRemove={removeDeviceReport}
               devices={availableDevices}
               accounts={availableAccounts}
+              onValidate={handleDeviceValidation} // <-- PASS FUNGSI VALIDASI
             />
           ))}
         </div>
@@ -511,16 +517,28 @@ const DailyReport = () => {
           </CardContent>
           <CardFooter className="flex-col items-start gap-4">
             <div className="flex gap-2">
-              <Button type="submit" className="gap-2" disabled={loading || loadingData}>
+              <Button 
+                 type="submit" 
+                 className="gap-2" 
+                 disabled={loading || loadingData || !isAllValid} // <-- GUNAKAN isAllValid
+              >
                 <Save className="h-4 w-4" />
                 {loading ? "Menyimpan..." : "Kirim Laporan & Absen Keluar"}
               </Button>
             </div>
+            {!isAllValid && (
+                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertCircle className="h-5 w-5" />
+                    <p>
+                        Laporan **belum lengkap** atau **tidak valid**. Harap periksa semua *field* yang wajib diisi.
+                    </p>
+                </div>
+            )}
             <div className="flex items-center gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary">
               <AlertCircle className="h-5 w-5" />
               <p>
                 Mengirim laporan ini akan otomatis mencatat{" "}
-                <strong>Absen Keluar</strong> Anda untuk hari ini.
+                <strong>Absen Keluar</strong> Anda untuk hari ini[cite: 3].
               </p>
             </div>
           </CardFooter>
