@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, startOfMonth } from "date-fns";
+import { format } from "date-fns";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KpiData } from "@/pages/KPI"; // Import tipe data KpiData
+import { KpiData } from "@/pages/KPI"; 
 
 // Tipe data Karyawan
 interface Employee {
@@ -45,18 +45,28 @@ interface Employee {
   full_name: string;
 }
 
+// === HELPER UNTUK FORMAT/PARSE (Konsistensi) ===
+const formatCurrencyInput = (value: string | number) => {
+   const numberValue = Number(String(value).replace(/[^0-9]/g, ""));
+   if (isNaN(numberValue) || numberValue === 0) return "0";
+   return new Intl.NumberFormat("id-ID").format(numberValue);
+};
+
+const parseCurrencyInput = (value: string) => {
+   return parseFloat(String(value).replace(/[^0-9]/g, "")) || 0;
+};
+// ===============================================
+
 // Skema validasi Zod
 const kpiFormSchema = z.object({
   employee_id: z.string().uuid({ message: "Karyawan wajib dipilih." }),
   target_month: z.date({ required_error: "Bulan target wajib diisi." }),
-  sales_target: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(0, { message: "Target Omset wajib diisi." })
-  ),
-  commission_target: z.preprocess(
-    (a) => parseFloat(String(a).replace(/[^0-9]/g, "")),
-    z.number().min(0, { message: "Target Komisi wajib diisi." })
-  ),
+  sales_target: z.string()
+    .min(1, { message: "Target Omset wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Nilai harus non-negatif." }),
+  commission_target: z.string()
+    .min(1, { message: "Target Komisi wajib diisi." })
+    .refine((val) => parseCurrencyInput(val) >= 0, { message: "Nilai harus non-negatif." }),
   attendance_target: z.preprocess(
     (a) => parseInt(String(a).replace(/[^0-9]/g, ""), 10),
     z.number().min(1).max(31, { message: "Target hadir (1-31 hari)." })
@@ -76,31 +86,11 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
-  // Helper format mata uang
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 0,
-    }).format(value);
-  };
-  
-  // Helper untuk membersihkan nilai yang akan dimasukkan ke form (diperlukan karena formatCurrency)
-  const parseNumber = (value: string | number | null): number => {
-    if (value === null) return 0;
-    return parseFloat(String(value).replace(/[^0-9]/g, "")) || 0;
-  };
-
   const form = useForm<KpiFormValues>({
     resolver: zodResolver(kpiFormSchema),
-    defaultValues: {
-      target_month: new Date(),
-      sales_target: 0,
-      commission_target: 0,
-      attendance_target: 22,
-      employee_id: undefined
-    },
   });
 
-  // Fetch data karyawan (hanya untuk menampilkan nama di dropdown)
+  // Fetch data karyawan (untuk menampilkan nama di dropdown)
   useEffect(() => {
     const fetchEmployees = async () => {
       const { data } = await supabase
@@ -120,31 +110,31 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
   useEffect(() => {
     if (kpiToEdit && open) {
       form.reset({
-        // Kita tidak bisa langsung mendapatkan employee_id dari kpiToEdit
-        // Kita butuh kpiToEdit yang sudah join dengan employees.id
-        // Asumsi kpiToEdit di KPI.tsx sudah membawa employee_id (lihat tipe KpiData)
-        employee_id: (kpiToEdit as any).employee_id, 
+        employee_id: kpiToEdit.employee_id, 
         target_month: new Date(kpiToEdit.target_month),
-        sales_target: parseNumber(kpiToEdit.sales_target),
-        commission_target: parseNumber(kpiToEdit.commission_target),
-        attendance_target: parseNumber(kpiToEdit.attendance_target),
+        // Konversi number ke string untuk input yang di-format
+        sales_target: kpiToEdit.sales_target.toString(),
+        commission_target: kpiToEdit.commission_target.toString(),
+        attendance_target: kpiToEdit.attendance_target,
       });
-      // Disable field karyawan dan bulan saat edit, karena itu adalah UNIQUE KEY
-      form.setValue("employee_id", (kpiToEdit as any).employee_id);
-      form.setValue("target_month", new Date(kpiToEdit.target_month));
     }
   }, [kpiToEdit, open, form]);
 
   const onSubmit = async (values: KpiFormValues) => {
     if (!kpiToEdit) return;
     setLoading(true);
+    
+    // Konversi string input mata uang ke number
+    const finalSalesTarget = parseCurrencyInput(values.sales_target);
+    const finalCommissionTarget = parseCurrencyInput(values.commission_target);
+
     try {
-      // Karena kita menggunakan UPSERT di SetTargetDialog, kita bisa menggunakan UPDATE di sini.
+      // Kita hanya UPDATE target, bukan employee_id atau target_month
       const { error } = await supabase
         .from("kpi_targets")
         .update({
-          sales_target: values.sales_target,
-          commission_target: values.commission_target,
+          sales_target: finalSalesTarget,
+          commission_target: finalCommissionTarget,
           attendance_target: values.attendance_target,
         })
         .eq("id", kpiToEdit.id);
@@ -152,10 +142,10 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
       if (error) throw error;
 
       toast.success("Target KPI berhasil diperbarui.");
-      onSuccess(); // Refresh list & tutup dialog
+      onSuccess(); 
     } catch (error: any) {
       console.error(error);
-      toast.error(`Terjadi kesalahan: ${error.message}`);
+      toast.error(`Gagal menyimpan target: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -196,6 +186,7 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -219,9 +210,9 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
                   <FormItem>
                     <FormLabel>Target Omset (50%)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="50000000"
-                       onChange={(e) => field.onChange(parseNumber(e.target.value))}
-                       value={formatCurrency(field.value || 0)}
+                      <Input type="text" placeholder="50.000.000"
+                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
+                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -235,9 +226,9 @@ export const EditTargetDialog = ({ open, onOpenChange, onSuccess, kpiToEdit }: E
                   <FormItem>
                     <FormLabel>Target Komisi (30%)</FormLabel>
                     <FormControl>
-                      <Input type="text" placeholder="5000000"
-                       onChange={(e) => field.onChange(parseNumber(e.target.value))}
-                       value={formatCurrency(field.value || 0)}
+                      <Input type="text" placeholder="5.000.000"
+                       onChange={(e) => field.onChange(parseCurrencyInput(e.target.value))}
+                       value={formatCurrencyInput(parseCurrencyInput(field.value))}
                       />
                     </FormControl>
                     <FormMessage />

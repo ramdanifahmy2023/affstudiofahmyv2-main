@@ -36,7 +36,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // Import Select
+} from "@/components/ui/select"; 
 
 // Tipe data device yang dibutuhkan untuk edit (mirip DeviceData dari Devices.tsx)
 interface DeviceData {
@@ -46,7 +46,8 @@ interface DeviceData {
   google_account: string | null;
   purchase_date: string | null;
   purchase_price: number | null;
-  group_id: string | null; // Tambahkan group_id
+  screenshot_url: string | null;
+  group_id: string | null; 
 }
 
 interface Group {
@@ -54,18 +55,18 @@ interface Group {
     name: string;
 }
 
-// Skema validasi Zod (mirip dengan AddDeviceDialog.tsx)
+// Skema validasi Zod
 const deviceFormSchema = z.object({
   device_id: z.string().min(1, { message: "ID Device wajib diisi." }),
   imei: z.string().length(15, { message: "IMEI harus tepat 15 digit." }).regex(/^\d+$/, { message: "IMEI hanya boleh berisi angka." }),
   google_account: z.string().email({ message: "Format email Akun Google tidak valid." }),
   purchase_date: z.date().optional().nullable(),
   purchase_price: z.preprocess(
-    (a) => a === "" || a === null ? null : parseFloat(z.string().parse(a).replace(/[^0-9.]/g, '')),
+    (a) => (a === "" || a === null || a === undefined ? null : parseFloat(String(a).replace(/[^0-9.]/g, ''))),
     z.number().positive().optional().nullable()
   ),
   screenshot_url: z.string().url({ message: "Format URL tidak valid." }).optional().nullable().or(z.literal('')),
-  group_id: z.string().optional().nullable(), // Tambahkan group_id untuk alokasi
+  group_id: z.string().optional().nullable(), 
 });
 
 type DeviceFormValues = z.infer<typeof deviceFormSchema>;
@@ -84,7 +85,9 @@ export const EditDeviceDialog = ({ open, onOpenChange, onSuccess, device }: Edit
   const form = useForm<DeviceFormValues>({
     resolver: zodResolver(deviceFormSchema),
     defaultValues: {
-        purchase_price: 0,
+        purchase_price: undefined,
+        screenshot_url: "",
+        group_id: "no-group",
     }
   });
 
@@ -104,8 +107,9 @@ export const EditDeviceDialog = ({ open, onOpenChange, onSuccess, device }: Edit
         imei: device.imei,
         google_account: device.google_account || "",
         purchase_date: device.purchase_date ? new Date(device.purchase_date + "T00:00:00") : null,
-        purchase_price: device.purchase_price || undefined,
-        screenshot_url: (device as any).screenshot_url || "", // Menggunakan 'as any' karena tipe awal kurang lengkap
+        // Set purchase_price ke undefined/null jika 0 atau null untuk input number
+        purchase_price: (device.purchase_price === 0 || device.purchase_price === null) ? undefined : device.purchase_price,
+        screenshot_url: device.screenshot_url || "",
         group_id: device.group_id || "no-group", // Default ke 'no-group'
       });
     }
@@ -116,6 +120,7 @@ export const EditDeviceDialog = ({ open, onOpenChange, onSuccess, device }: Edit
 
     setLoading(true);
     try {
+      // Konversi "no-group" ke null
       const finalGroupId = values.group_id === "no-group" ? null : values.group_id;
 
       const { error } = await supabase
@@ -258,7 +263,11 @@ export const EditDeviceDialog = ({ open, onOpenChange, onSuccess, device }: Edit
                   <FormItem>
                     <FormLabel>Harga Beli (Opsional)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="3500000" {...field} 
+                      <Input 
+                        type="number" 
+                        placeholder="3500000" 
+                        {...field} 
+                        // Pastikan nilai 0 atau null diubah ke string kosong untuk input number
                         value={field.value === undefined || field.value === null ? '' : field.value}
                         onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
                       />

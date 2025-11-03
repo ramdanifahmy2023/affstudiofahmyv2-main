@@ -40,10 +40,24 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommissionData } from "@/pages/Commissions";
 
-// Skema Zod (sama persis dengan file Add Anda)
+// Skema Zod
 const periods = ["M1", "M2", "M3", "M4", "M5"] as const;
 
-// --- PERBAIKAN SKEMA ZOD ---
+// === HELPER UNTUK FORMAT/PARSE (Konsistensi dengan form lain) ===
+const formatCurrencyInput = (value: string | number) => {
+   if (typeof value === 'number') value = value.toString();
+   if (!value) return "";
+   const num = value.replace(/[^0-9]/g, "");
+   if (num === "0") return "0";
+   return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
+};
+
+const parseCurrencyInput = (value: string) => {
+   return parseFloat(value.replace(/[^0-9]/g, "")) || 0;
+};
+// ===============================================================
+
+// Skema validasi Zod
 const commissionFormSchema = z.object({
   account_id: z.string().uuid({ message: "Akun wajib dipilih." }),
   year: z.string().length(4),
@@ -51,16 +65,15 @@ const commissionFormSchema = z.object({
   period: z.enum(periods),
   gross_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(val)), { message: "Harus berupa angka." }),
+    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
   net_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(val)), { message: "Harus berupa angka." }),
+    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
   paid_commission: z.string()
     .min(1, { message: "Wajib diisi." })
-    .refine((val) => !isNaN(parseFloat(val)), { message: "Harus berupa angka." }),
+    .refine((val) => !isNaN(parseFloat(parseCurrencyInput(val))), { message: "Harus berupa angka." }),
   payment_date: z.date().optional().nullable(),
 });
-// --- AKHIR PERBAIKAN SKEMA ---
 
 type CommissionFormValues = z.infer<typeof commissionFormSchema>;
 
@@ -80,7 +93,6 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
 
   const form = useForm<CommissionFormValues>({
     resolver: zodResolver(commissionFormSchema),
-    // Default values akan diisi oleh useEffect
   });
 
   // Ambil data Akun
@@ -94,18 +106,17 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
       });
   }, []);
 
-  // Logika kalkulasi tanggal (dari file Add Anda)
+  // Logika kalkulasi tanggal (sama dengan AddDialog)
   const calculatePeriodDates = (yearStr: string, monthStr: string, period: string) => {
-     // ... (fungsi ini sama persis dengan yang ada di AddCommissionDialog.tsx)
     const year = parseInt(yearStr);
     const month = parseInt(monthStr); // 0-11
     if (isNaN(year) || isNaN(month)) return { start: null, end: null };
 
-    const startDate = new Date(year, month, 1);
+    const startDate = startOfMonth(new Date(year, month));
     const endDate = endOfMonth(startDate);
     let periodStart: Date, periodEnd: Date;
 
-    const getDayOfWeek = (date: Date) => (date.getDay() + 6) % 7; // 0=Mon, 6=Sun
+    const getDayOfWeek = (date: Date) => (date.getDay() + 6) % 7; 
 
     if (period === "M1") {
       periodStart = startDate;
@@ -120,30 +131,26 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
         m1End.setDate(m1End.getDate() + 1);
       }
       
+      const daysAfterM1 = m1End.getDate();
+
       if (period === "M2") {
-        periodStart = new Date(m1End.getTime());
-        periodStart.setDate(periodStart.getDate() + 1);
-        periodEnd = new Date(periodStart.getTime());
-        periodEnd.setDate(periodEnd.getDate() + 6);
+        periodStart = new Date(year, month, daysAfterM1 + 1);
+        periodEnd = new Date(year, month, daysAfterM1 + 7);
       } else if (period === "M3") {
-         periodStart = new Date(m1End.getTime());
-         periodStart.setDate(periodStart.getDate() + 8);
-         periodEnd = new Date(periodStart.getTime());
-         periodEnd.setDate(periodEnd.getDate() + 6);
+         periodStart = new Date(year, month, daysAfterM1 + 8);
+         periodEnd = new Date(year, month, daysAfterM1 + 14);
       } else if (period === "M4") {
-         periodStart = new Date(m1End.getTime());
-         periodStart.setDate(periodStart.getDate() + 15);
-         periodEnd = new Date(periodStart.getTime());
-         periodEnd.setDate(periodEnd.getDate() + 6);
+         periodStart = new Date(year, month, daysAfterM1 + 15);
+         periodEnd = new Date(year, month, daysAfterM1 + 21);
       } else { // M5
-         periodStart = new Date(m1End.getTime());
-         periodStart.setDate(periodStart.getDate() + 22);
+         periodStart = new Date(year, month, daysAfterM1 + 22);
          periodEnd = endDate;
       }
     }
-     if (periodEnd.getTime() > endDate.getTime()) {
-       periodEnd = endDate;
-     }
+    
+    if (periodEnd.getTime() > endDate.getTime()) {
+      periodEnd = endDate;
+    }
     
     return { start: periodStart, end: periodEnd };
   };
@@ -160,6 +167,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
   // Isi form saat dialog dibuka
   useEffect(() => {
     if (commission && open) {
+      // Tambahkan "T00:00:00" untuk menghindari masalah timezone
       const startDate = new Date(commission.period_start + "T00:00:00");
       
       form.reset({
@@ -167,11 +175,10 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
         year: getYear(startDate).toString(),
         month: getMonth(startDate).toString(),
         period: commission.period as any,
-        // --- PERBAIKAN: Ubah number ke string ---
+        // Konversi number ke string untuk input yang di-format
         gross_commission: commission.gross_commission.toString(),
         net_commission: commission.net_commission.toString(),
         paid_commission: commission.paid_commission.toString(),
-        // --- AKHIR PERBAIKAN ---
         payment_date: commission.payment_date
           ? new Date(commission.payment_date + "T00:00:00")
           : null,
@@ -183,6 +190,12 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
     if (!periodDates.start || !periodDates.end || !commission) return;
     
     setLoading(true);
+    
+    // Konversi string input mata uang ke number
+    const finalGrossCommission = parseCurrencyInput(values.gross_commission);
+    const finalNetCommission = parseCurrencyInput(values.net_commission);
+    const finalPaidCommission = parseCurrencyInput(values.paid_commission);
+
     try {
       const { error } = await supabase
         .from("commissions")
@@ -191,11 +204,9 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
           period: values.period,
           period_start: format(periodDates.start, "yyyy-MM-dd"),
           period_end: format(periodDates.end, "yyyy-MM-dd"),
-          // --- PERBAIKAN: Ubah ke number saat submit ---
-          gross_commission: parseFloat(values.gross_commission),
-          net_commission: parseFloat(values.net_commission),
-          paid_commission: parseFloat(values.paid_commission),
-          // --- AKHIR PERBAIKAN ---
+          gross_commission: finalGrossCommission,
+          net_commission: finalNetCommission,
+          paid_commission: finalPaidCommission,
           payment_date: values.payment_date ? format(values.payment_date, "yyyy-MM-dd") : null,
         })
         .eq("id", commission.id);
@@ -203,7 +214,6 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
       if (error) throw error;
 
       toast.success(`Data komisi berhasil diperbarui.`);
-      form.reset();
       onSuccess();
     } catch (error: any) {
       console.error(error);
@@ -213,18 +223,6 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
     }
   };
 
-  // Helper format mata uang (tetap sama)
-  const formatCurrencyInput = (value: string | number) => {
-     if (typeof value === 'number') value = value.toString();
-     if (!value) return "";
-     const num = value.replace(/[^0-9]/g, "");
-     if (num === "0") return "0";
-     return num ? new Intl.NumberFormat("id-ID").format(parseInt(num)) : "";
-  };
-  
-  const parseCurrencyInput = (value: string) => {
-     return value.replace(/[^0-9]/g, "");
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -336,7 +334,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(field.value)}
+                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
                         onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
                     </FormControl>
@@ -353,7 +351,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(field.value)}
+                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
                         onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
                     </FormControl>
@@ -370,7 +368,7 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                     <FormControl>
                       <Input 
                         placeholder="0"
-                        value={formatCurrencyInput(field.value)}
+                        value={formatCurrencyInput(parseCurrencyInput(field.value))}
                         onChange={e => field.onChange(parseCurrencyInput(e.target.value))}
                       />
                     </FormControl>
@@ -386,7 +384,6 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Tanggal Cair (Opsional)</FormLabel>
-                  {/* ... (komponen Popover Calendar tetap sama) ... */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
@@ -403,7 +400,12 @@ export const EditCommissionDialog = ({ open, onOpenChange, onSuccess, commission
                       </FormControl>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
-                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                      <Calendar 
+                        mode="single" 
+                        selected={field.value || undefined} 
+                        onSelect={field.onChange} 
+                        initialFocus 
+                      />
                     </PopoverContent>
                   </Popover>
                   <FormMessage />

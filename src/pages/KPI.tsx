@@ -27,8 +27,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { SetTargetDialog } from "@/components/KPI/SetTargetDialog";
-import { EditTargetDialog } from "@/components/KPI/EditTargetDialog"; // <-- IMPORT BARU
-import { DeleteTargetAlert } from "@/components/KPI/DeleteTargetAlert"; // <-- IMPORT BARU
+import { EditTargetDialog } from "@/components/KPI/EditTargetDialog"; 
+import { DeleteTargetAlert } from "@/components/KPI/DeleteTargetAlert"; 
 import { cn } from "@/lib/utils";
 
 // Tipe data dari Supabase
@@ -81,7 +81,7 @@ const KPI = () => {
 
   // Helper format
   const formatCurrency = (amount: number | null) => {
-    if (amount === null) return "Rp 0";
+    if (amount === null || amount === undefined) return "Rp 0";
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
@@ -91,7 +91,7 @@ const KPI = () => {
   
   const formatDateMonth = (dateString: string) => {
     try {
-      // Perbaikan kecil: Pastikan format tanggal aman untuk new Date()
+      // Pastikan format tanggal aman untuk new Date()
       return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), "MMM yyyy");
     } catch (e) { return "-"; }
   }
@@ -99,11 +99,9 @@ const KPI = () => {
   // Kalkulasi KPI
   const calculateKpi = (data: KpiData[]): CalculatedKpi[] => {
     return data.map(item => {
-      // Realisasi Omset (%) = (Aktual / Target) × 100
+      // Bobot: Omset (50%), Komisi (30%), Absensi (20%)
       const sales_pct = (item.sales_target > 0) ? ((item.actual_sales || 0) / item.sales_target) * 100 : 0;
-      // Realisasi Komisi (%) = (Aktual / Target) × 100
       const commission_pct = (item.commission_target > 0) ? ((item.actual_commission || 0) / item.commission_target) * 100 : 0;
-      // Realisasi Kehadiran (%) = (Hari Hadir / Target Hari) × 100
       const attendance_pct = (item.attendance_target > 0) ? ((item.actual_attendance || 0) / item.attendance_target) * 100 : 0;
       
       // Total KPI = (Realisasi Omset × 0.5) + (Realisasi Komisi × 0.3) + (Realisasi Kehadiran × 0.2)
@@ -111,9 +109,9 @@ const KPI = () => {
       
       return {
         ...item,
-        sales_pct,
-        commission_pct,
-        attendance_pct,
+        sales_pct: Math.min(sales_pct, 100),
+        commission_pct: Math.min(commission_pct, 100),
+        attendance_pct: Math.min(attendance_pct, 100),
         total_kpi: Math.min(total_kpi, 100), // Batasi maks 100%
       };
     });
@@ -128,7 +126,6 @@ const KPI = () => {
         return;
     }
     try {
-      // Tambahkan employee_id untuk keperluan Edit/Delete
       const { data, error } = await supabase
         .from("kpi_targets")
         .select(`
@@ -165,11 +162,11 @@ const KPI = () => {
     if (profile) fetchKpiData();
   }, [profile]);
   
-  // Helper warna progress bar
+  // Helper warna progress bar (sesuai blueprint)
   const getKpiColor = (kpi: number) => {
-    if (kpi >= 100) return "bg-success"; // Hijau
-    if (kpi >= 70) return "bg-warning"; // Kuning
-    return "bg-destructive"; // Merah
+    if (kpi >= 100) return "bg-success"; // Hijau: ≥ 100%
+    if (kpi >= 70) return "bg-warning"; // Kuning: 70-99%
+    return "bg-destructive"; // Merah: < 70%
   };
   
   const handleEditClick = (kpi: KpiData) => {
@@ -179,6 +176,24 @@ const KPI = () => {
   const handleDeleteClick = (kpi: KpiData) => {
     setDialogs({ ...dialogs, delete: kpi });
   };
+  
+  const handleSuccess = () => {
+     setDialogs({ add: false, edit: null, delete: null });
+     fetchKpiData(); // Refresh data
+  };
+
+  // Jika tidak bisa membaca (akses ditolak)
+  if (!canRead && !loading) {
+     return (
+        <MainLayout>
+           <div className="flex flex-col justify-center items-center h-[calc(100vh-100px)]">
+             <h1 className="text-2xl font-bold">Akses Ditolak</h1>
+             <p className="text-muted-foreground">Anda tidak memiliki izin untuk melihat halaman ini.</p>
+           </div>
+         </MainLayout>
+     )
+  }
+
 
   return (
     <MainLayout>
@@ -206,7 +221,7 @@ const KPI = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Cari nama karyawan..." className="pl-10 w-full" />
               </div>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" disabled>
                 <Download className="h-4 w-4" />
                 Export (Soon)
               </Button>
@@ -218,6 +233,7 @@ const KPI = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -307,6 +323,7 @@ const KPI = () => {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -318,28 +335,21 @@ const KPI = () => {
            <SetTargetDialog
              open={dialogs.add}
              onOpenChange={(open) => setDialogs({ ...dialogs, add: open })}
-             onSuccess={() => {
-               setDialogs({ ...dialogs, add: false });
-               fetchKpiData(); // Refresh data
-             }}
+             onSuccess={handleSuccess}
            />
-           <EditTargetDialog
-              open={!!dialogs.edit}
-              onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
-              onSuccess={() => {
-                setDialogs({ ...dialogs, edit: null });
-                fetchKpiData(); // Refresh data
-              }}
-              kpiToEdit={dialogs.edit}
-            />
-            {canDelete && (
+           {dialogs.edit && (
+             <EditTargetDialog
+                open={!!dialogs.edit}
+                onOpenChange={(open) => setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })}
+                onSuccess={handleSuccess}
+                kpiToEdit={dialogs.edit}
+              />
+            )}
+            {canDelete && dialogs.delete && (
               <DeleteTargetAlert
                 open={!!dialogs.delete}
                 onOpenChange={(open) => setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })}
-                onSuccess={() => {
-                  setDialogs({ ...dialogs, delete: null });
-                  fetchKpiData(); // Refresh data
-                }}
+                onSuccess={handleSuccess}
                 kpiToDelete={dialogs.delete}
               />
             )}

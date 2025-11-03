@@ -100,7 +100,8 @@ const Commissions = () => {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "-";
-    const date = new Date(dateString + "T00:00:00"); // Hindari T-Z
+    // Tambahkan "T00:00:00" untuk menghindari masalah timezone saat new Date()
+    const date = new Date(dateString + "T00:00:00"); 
     return format(date, "dd MMM yyyy", { locale: indonesiaLocale });
   };
 
@@ -129,9 +130,9 @@ const Commissions = () => {
       setCommissions(data as any);
       
       // Hitung summary
-      const gross = data.reduce((acc, c) => acc + c.gross_commission, 0);
-      const net = data.reduce((acc, c) => acc + c.net_commission, 0);
-      const paid = data.reduce((acc, c) => acc + c.paid_commission, 0);
+      const gross = data.reduce((acc, c) => acc + (c.gross_commission || 0), 0);
+      const net = data.reduce((acc, c) => acc + (c.net_commission || 0), 0);
+      const paid = data.reduce((acc, c) => acc + (c.paid_commission || 0), 0);
       setSummary({ gross, net, paid });
 
     } catch (error: any) {
@@ -205,6 +206,7 @@ const Commissions = () => {
         <Card>
           <CardHeader>
             <CardTitle>Riwayat Komisi</CardTitle>
+            {/* Tambahkan Filter/Search di sini jika diperlukan */}
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -212,90 +214,92 @@ const Commissions = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Akun</TableHead>
-                    <TableHead>Periode</TableHead>
-                    <TableHead>Tgl. Komisi Cair</TableHead>
-                    <TableHead className="text-right">Kotor</TableHead>
-                    <TableHead className="text-right">Bersih</TableHead>
-                    <TableHead className="text-right">Cair</TableHead>
-                    {canManage && <TableHead>Aksi</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {commissions.length === 0 && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center h-24">
-                        Belum ada data komisi.
-                      </TableCell>
+                      <TableHead>Akun</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Tgl. Komisi Cair</TableHead>
+                      <TableHead className="text-right">Kotor</TableHead>
+                      <TableHead className="text-right">Bersih</TableHead>
+                      <TableHead className="text-right">Cair</TableHead>
+                      {canManage && <TableHead>Aksi</TableHead>}
                     </TableRow>
-                  )}
-                  {commissions.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">
-                        {c.accounts?.username || "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <Badge
-                            variant="secondary"
-                            className="w-fit"
-                          >
-                            {c.period}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground mt-1">
-                            {formatDate(c.period_start)} - {formatDate(c.period_end)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{formatDate(c.payment_date)}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(c.gross_commission)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(c.net_commission)}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-success">
-                        {formatCurrency(c.paid_commission)}
-                      </TableCell>
-                      {/* --- DROPDOWN AKSI BARU --- */}
-                      {canManage && (
+                  </TableHeader>
+                  <TableBody>
+                    {commissions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center h-24">
+                          Belum ada data komisi.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {commissions.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">
+                          {c.accounts?.username || "N/A"}
+                        </TableCell>
                         <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setDialogs({ ...dialogs, edit: c })
-                                }
-                              >
-                                <Edit className="mr-2 h-4 w-4" /> Edit
-                              </DropdownMenuItem>
-                              {canDelete && (
+                          <div className="flex flex-col">
+                            <Badge
+                              variant="secondary"
+                              className="w-fit"
+                            >
+                              {c.period}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground mt-1">
+                              {formatDate(c.period_start)} - {formatDate(c.period_end)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDate(c.payment_date)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(c.gross_commission)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(c.net_commission)}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-success">
+                          {formatCurrency(c.paid_commission)}
+                        </TableCell>
+                        {/* --- DROPDOWN AKSI --- */}
+                        {canManage && (
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  className="text-destructive"
                                   onClick={() =>
-                                    setDialogs({ ...dialogs, delete: c })
+                                    setDialogs({ ...dialogs, edit: c })
                                   }
                                 >
-                                  <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                  <Edit className="mr-2 h-4 w-4" /> Edit
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      )}
-                      {/* --- AKHIR DROPDOWN AKSI --- */}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                                {canDelete && (
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() =>
+                                      setDialogs({ ...dialogs, delete: c })
+                                    }
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        )}
+                        {/* --- AKHIR DROPDOWN AKSI --- */}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -312,28 +316,32 @@ const Commissions = () => {
               fetchCommissions(); // Refresh data
             }}
           />
-          <EditCommissionDialog
-            open={!!dialogs.edit}
-            onOpenChange={(open) =>
-              setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })
-            }
-            onSuccess={() => {
-              setDialogs({ ...dialogs, edit: null });
-              fetchCommissions(); // Refresh data
-            }}
-            commission={dialogs.edit}
-          />
-          <DeleteCommissionAlert
-            open={!!dialogs.delete}
-            onOpenChange={(open) =>
-              setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })
-            }
-            onSuccess={() => {
-              setDialogs({ ...dialogs, delete: null });
-              fetchCommissions(); // Refresh data
-            }}
-            commission={dialogs.delete}
-          />
+          {dialogs.edit && (
+            <EditCommissionDialog
+              open={!!dialogs.edit}
+              onOpenChange={(open) =>
+                setDialogs({ ...dialogs, edit: open ? dialogs.edit : null })
+              }
+              onSuccess={() => {
+                setDialogs({ ...dialogs, edit: null });
+                fetchCommissions(); // Refresh data
+              }}
+              commission={dialogs.edit}
+            />
+          )}
+          {canDelete && dialogs.delete && (
+            <DeleteCommissionAlert
+              open={!!dialogs.delete}
+              onOpenChange={(open) =>
+                setDialogs({ ...dialogs, delete: open ? dialogs.delete : null })
+              }
+              onSuccess={() => {
+                setDialogs({ ...dialogs, delete: null });
+                fetchCommissions(); // Refresh data
+              }}
+              commission={dialogs.delete}
+            />
+          )}
         </>
       )}
     </MainLayout>
