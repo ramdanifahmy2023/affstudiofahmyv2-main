@@ -5,7 +5,18 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Download, UserCircle, Loader2, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Download,
+  UserCircle,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Upload,
+  Printer, // <-- 1. IMPORT IKON BARU
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -19,7 +30,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator, // <-- 1. IMPORT DROPDOWN SEPARATOR
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,7 +42,7 @@ import { DeleteAccountAlert } from "@/Account/DeleteAccountAlert";
 import { BulkImportDialog } from "@/Account/BulkImportDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
+import { useExport } from "@/hooks/useExport"; // <-- IMPORT USE EXPORT
 
 // Tipe data dari Supabase (diperbarui untuk menangani null dari DB)
 type AccountData = {
@@ -63,8 +74,8 @@ const Accounts = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [platformFilter, setPlatformFilter] = useState("all");
   
-  // --- 3. INISIALISASI HOOK EXPORT ---
-  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
   
   const [dialogs, setDialogs] = useState<DialogState>({
     add: false,
@@ -183,8 +194,8 @@ const Accounts = () => {
     }
   };
 
-  // --- 4. FUNGSI HANDLE EXPORT ---
-  const handleExport = (type: 'pdf' | 'csv') => {
+  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  const handleExport = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'Platform', dataKey: 'platform' },
       { header: 'Username', dataKey: 'username' },
@@ -212,8 +223,10 @@ const Accounts = () => {
     
     if (type === 'pdf') {
         exportToPDF(options);
-    } else {
+    } else if (type === 'csv') {
         exportToCSV(options);
+    } else {
+        printData(options);
     }
   };
 
@@ -320,7 +333,7 @@ const Accounts = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              {/* --- 5. GANTI BUTTON EXPORT DENGAN DROPDOWN --- */}
+              {/* --- 4. TAMBAHKAN OPSI CETAK DI SINI --- */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="gap-2" disabled={isExporting || filteredAccounts.length === 0}>
@@ -334,6 +347,11 @@ const Accounts = () => {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
                         Export CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleExport('print')} disabled={isExporting}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        Cetak Halaman
                     </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

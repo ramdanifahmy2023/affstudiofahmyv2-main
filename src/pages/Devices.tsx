@@ -5,15 +5,27 @@ import { MainLayout } from "@/components/Layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // <-- 1. IMPORT BARU
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // <-- 1. IMPORT BARU
-import { Plus, Search, Smartphone, Download, Loader2, MoreHorizontal, Pencil, Trash2, DollarSign, Archive } from "lucide-react";
+} from "@/components/ui/select";
+import {
+  Plus,
+  Search,
+  Smartphone,
+  Download,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  DollarSign,
+  Archive,
+  Printer, // <-- 1. IMPORT IKON BARU
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -27,7 +39,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator, // <-- 1. IMPORT BARU
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,7 +69,7 @@ type DeviceData = {
   } | null;
 };
 
-// --- 2. TIPE DATA BARU UNTUK FILTER ---
+// TIPE DATA BARU UNTUK FILTER
 type Group = {
   id: string;
   name: string;
@@ -77,7 +89,6 @@ const Devices = () => {
   const [filteredDevices, setFilteredDevices] = useState<DeviceData[]>([]); // List yang ditampilkan
   const [loading, setLoading] = useState(true);
   
-  // --- 3. STATE BARU UNTUK FILTER ---
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGroup, setFilterGroup] = useState("all");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
@@ -88,7 +99,8 @@ const Devices = () => {
     delete: null,
   });
 
-  const { exportToPDF, exportToCSV, isExporting } = useExport();
+  // --- 2. TAMBAHKAN 'printData' DARI HOOK ---
+  const { exportToPDF, exportToCSV, isExporting, printData } = useExport();
 
   const canManageDevices =
     profile?.role === "superadmin" || profile?.role === "leader";
@@ -143,7 +155,8 @@ const Devices = () => {
     }
   };
   
-  const exportDevices = (type: 'pdf' | 'csv') => {
+  // --- 3. MODIFIKASI FUNGSI HANDLE EXPORT ---
+  const exportDevices = (type: 'pdf' | 'csv' | 'print') => {
     const columns = [
       { header: 'ID Device', dataKey: 'device_id' },
       { header: 'IMEI', dataKey: 'imei' },
@@ -157,10 +170,12 @@ const Devices = () => {
     // Gunakan filteredDevices untuk export
     const exportData = filteredDevices.map(d => ({
         ...d,
+        google_account: d.google_account || '-', // Pastikan null menjadi '-'
         group_name: d.groups?.name || '-',
         purchase_date_formatted: formatDate(d.purchase_date),
         purchase_price_formatted: formatCurrency(d.purchase_price),
         purchase_price_raw: d.purchase_price || 0,
+        screenshot_url: d.screenshot_url || '-', // Pastikan null menjadi '-'
     }));
 
     const options = {
@@ -172,13 +187,14 @@ const Devices = () => {
     
     if (type === 'pdf') {
         exportToPDF(options);
-    } else {
+    } else if (type === 'csv') {
         exportToCSV(options);
+    } else {
+        printData(options);
     }
   };
 
 
-  // --- 4. FETCH DATA (MASTER LIST DAN GROUPS) SAAT MOUNT ---
   useEffect(() => {
     fetchDevices(); // Ambil master list devices
     
@@ -192,7 +208,6 @@ const Devices = () => {
     fetchGroups();
   }, []);
 
-  // --- 5. UPDATE LOGIKA FILTER (CLIENT-SIDE) ---
   useEffect(() => {
     let results = [...devices]; // Mulai dengan master list
 
@@ -300,7 +315,7 @@ const Devices = () => {
           </Card>
         </div>
 
-        {/* --- 6. GANTI UI FILTER --- */}
+        {/* UI FILTER BARU */}
         <Card>
           <CardHeader>
             <div className="flex flex-col md:flex-row items-end gap-4">
@@ -337,6 +352,7 @@ const Devices = () => {
 
                {/* Tombol Export */}
               <div className="flex-shrink-0">
+                {/* --- 4. TAMBAHKAN OPSI CETAK DI SINI --- */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="gap-2" disabled={isExporting || filteredDevices.length === 0}>
@@ -351,8 +367,14 @@ const Devices = () => {
                       <DropdownMenuItem onClick={() => exportDevices('csv')} disabled={isExporting}>
                           Export CSV
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => exportDevices('print')} disabled={isExporting}>
+                          <Printer className="mr-2 h-4 w-4" />
+                          Cetak Halaman
+                      </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                {/* ------------------------------------- */}
               </div>
             </div>
           </CardHeader>
