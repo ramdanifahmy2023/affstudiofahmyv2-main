@@ -49,7 +49,7 @@ export const AddEmployeeDialog = ({
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
   const [role, setRole] = useState<string>("");
-  const [groupId, setGroupId] = useState<string>("no-group"); // Default ke no-group
+  const [groupId, setGroupId] = useState<string>("no-group");
   const [status, setStatus] = useState("active");
 
   // Ambil data group untuk dropdown
@@ -81,13 +81,15 @@ export const AddEmployeeDialog = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 8) {
-      toast.error("Password minimal harus 8 karakter.");
+    
+    // ✅ VALIDASI SISI KLIEN UNTUK FIELD WAJIB
+    if (!fullName.trim() || !position.trim() || !email.trim() || !role || !password) {
+      toast.error("Semua field bertanda (*) wajib diisi.");
       return;
     }
-    // Validasi tambahan agar 'Pilih Role' tidak lolos
-    if (!role) {
-      toast.error("Role / Hak Akses wajib diisi.");
+
+    if (password.length < 8) {
+      toast.error("Password minimal 8 karakter.");
       return;
     }
 
@@ -101,12 +103,12 @@ export const AddEmployeeDialog = ({
       // Memanggil Supabase Edge Function 'create-user'
       const { data, error } = await supabase.functions.invoke("create-user", {
         body: {
-          email,
+          email: email.trim(),
           password,
-          fullName,
-          phone: phone || null, // Pastikan kirim null jika string kosong
+          fullName: fullName.trim(),
+          phone: phone.trim() || null, // Mengirim null jika kosong
           role,
-          position,
+          position: position.trim(),
           groupId: finalGroupId,
           status,
         },
@@ -115,44 +117,33 @@ export const AddEmployeeDialog = ({
       // PENTING: Periksa jika error Supabase Function terjadi (misal timeout atau CORS error)
       if (error) {
         if (error.status === 500) {
-            toast.error("Gagal menambah karyawan. (Internal Server Error)", {
-                description: "Silakan cek log Deno Function Anda di Supabase.",
-            });
+          toast.error("Gagal menambah karyawan. (Internal Server Error)", {
+            description: "Silakan cek log Deno Function Anda di Supabase.",
+          });
         } else {
-             // Ini menangani Network/Timeout error yang menyebabkan promise resolved dengan error object
-             toast.error("Gagal menambah karyawan.", {
-                description: error.message || "Terdapat masalah koneksi/server timeout. Silakan coba lagi.",
-            });
+          // Menangani Network/Timeout error
+          toast.error("Gagal menambah karyawan.", {
+            description: error.message || "Terdapat masalah koneksi/server timeout. Silakan coba lagi.",
+          });
         }
-        
-        throw new Error(error.message); // Lemparkan error agar masuk ke catch block
+        throw new Error(error.message); 
       }
       
       // PENTING: Periksa jika ada error dari body response (error dari Deno Function)
       if (data?.error) {
-          toast.error("Gagal menambah karyawan.", {
-              description: data.error || "Pastikan email belum terdaftar atau data grup valid.",
-          });
-          throw new Error(data.error); // Lemparkan error agar masuk ke catch block
+        toast.error("Gagal menambah karyawan.", {
+          description: data.error || "Pastikan email belum terdaftar atau data grup valid.",
+        });
+        throw new Error(data.error); 
       }
-
 
       toast.success("Karyawan baru berhasil ditambahkan!");
       onSuccess();
       handleClose();
 
     } catch (error: any) {
-      // Catch block untuk error yang dilempar dari try
-      if (!error.message.includes("Gagal menambah karyawan")) { 
-          // Hindari double toast jika sudah ditangani di atas
-          toast.error("Gagal menambah karyawan.", {
-              description: error.message || "Pastikan email belum terdaftar.",
-          });
-      }
-      console.error(error);
-
+      console.error("Error detail:", error);
     } finally {
-      // FINALLY BLOCK AKAN SELALU DIEKSEKUSI
       setLoading(false);
     }
   };
@@ -169,44 +160,42 @@ export const AddEmployeeDialog = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="fullName">Nama Lengkap</Label>
+              <Label htmlFor="fullName">Nama Lengkap *</Label>
               <Input
                 id="fullName"
+                placeholder="Masukkan nama lengkap"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="position">Jabatan</Label>
+              <Label htmlFor="position">Jabatan *</Label>
               <Input
                 id="position"
                 placeholder="cth: Staff Live"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
-                required
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email (untuk login)</Label>
+            <Label htmlFor="email">Email (untuk login) *</Label>
             <Input
               id="email"
               type="email"
               placeholder="nama@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password (min. 8 karakter)</Label>
+            <Label htmlFor="password">Password (min. 8 karakter) *</Label>
             <Input
               id="password"
               type="password"
+              placeholder="Masukkan password minimal 8 karakter"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -215,13 +204,14 @@ export const AddEmployeeDialog = ({
               <Input
                 id="phone"
                 type="tel"
+                placeholder="08xx xxx xxxx"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Role / Hak Akses</Label>
-              <Select value={role} onValueChange={setRole} required>
+              <Label htmlFor="role">Role / Hak Akses *</Label>
+              <Select value={role} onValueChange={setRole} >
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Pilih Role" />
                 </SelectTrigger>
@@ -250,7 +240,7 @@ export const AddEmployeeDialog = ({
                 </SelectContent>
               </Select>
             </div>
-             <div className="space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="status">Status Akun</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger id="status">

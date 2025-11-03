@@ -166,7 +166,6 @@ export const EditEmployeeDialog = ({
                 placeholder="cth: Staff Live"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
-                required
               />
             </div>
           </div>

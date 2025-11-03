@@ -1,14 +1,16 @@
-// supabase/functions/create-user/index.ts
+// supabase/functions/create-user/index.ts (Final Refinement)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Header untuk menangani CORS (PENTING)
 const corsHeaders = {
+  // Izinkan akses dari mana saja (penting untuk pengembangan lokal/Vite)
   "Access-Control-Allow-Origin": "*",
+  // Izinkan header yang dikirim oleh Supabase Client
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  // BARIS BARU KRITIS UNTUK PREFLIGHT
-  "Access-Control-Allow-Methods": "POST, OPTIONS", 
+  // Tambahkan 'POST' ke Allow-Methods untuk Preflight
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 // Definisikan logika handler
@@ -90,7 +92,7 @@ async function handler(req: Request): Promise<Response> {
     console.log("LOG: Auth user created with ID:", newUserId);
 
     // 4. Menyisipkan data ke tabel 'profiles'
-    console.log("LOG: Inserting profile record...");
+    console.log("LOG: Inserting profile record for user_id:", newUserId);
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
       .insert({
@@ -105,8 +107,9 @@ async function handler(req: Request): Promise<Response> {
       .single();
 
     if (profileError) {
-      console.error("Gagal insert ke profiles. Melakukan rollback user:", newUserId);
-      await supabaseAdmin.auth.admin.deleteUser(newUserId);
+      console.error("Gagal insert ke profiles:", profileError.message);
+      // Rollback Auth User, yang seharusnya menghapus profile juga karena ON DELETE CASCADE
+      await supabaseAdmin.auth.admin.deleteUser(newUserId); 
       throw profileError;
     }
 
@@ -114,16 +117,19 @@ async function handler(req: Request): Promise<Response> {
     console.log("LOG: Profile created with ID:", newProfileId);
 
     // 5. Menyisipkan data ke tabel 'employees'
-    console.log("LOG: Inserting employee record...");
+    console.log("LOG: Inserting employee record for profile_id:", newProfileId);
     const { error: employeeError } = await supabaseAdmin
       .from("employees")
       .insert({
         profile_id: newProfileId,
-        position: position,
+        position: position || null,
         group_id: groupId || null,
       });
 
     if (employeeError) {
+      console.error("Gagal insert ke employees:", employeeError.message); 
+      // Rollback Auth User, yang seharusnya menghapus profile & employee karena ON DELETE CASCADE
+      await supabaseAdmin.auth.admin.deleteUser(newUserId); 
       throw employeeError; 
     }
     employeeRecordCreated = true; 
@@ -140,39 +146,21 @@ async function handler(req: Request): Promise<Response> {
       },
     );
   } catch (error: any) {
-    // Tangani semua error dan lakukan rollback jika diperlukan
+    // Tangani semua error
     console.error("Kesalahan umum di create-user:", error.message);
 
-    // --- LOGIKA ROLLBACK KRITIS ---
-    if (newUserId) {
-        // Coba hapus Auth User (ini akan menghapus semua yang terkait di RLS, termasuk Profile)
-        const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(newUserId);
-        if (deleteAuthError) {
-            console.warn("Rollback warning: Gagal menghapus auth user (mungkin sudah terhapus):", deleteAuthError.message);
-        } else {
-            console.log("LOG: Rollback successful. Auth user (dan Profile) dihapus:", newUserId);
-        }
-
-        // Jika profile terlanjur dibuat tapi employee gagal (dan RLS gagal menghapus Profile)
-        if (newProfileId && !employeeRecordCreated) {
-           const { error: deleteProfileError } = await supabaseAdmin.from("profiles").delete().eq("id", newProfileId);
-           if (!deleteProfileError) {
-              console.log("LOG: Rollback successful. Profile dihapus:", newProfileId);
-           }
-        }
-    }
-    // --- AKHIR LOGIKA ROLLBACK KRITIS ---
-
-    // Kirim respons error
+    // Kirim respons error yang lebih mudah dipahami
     const friendlyErrorMessage = error.message.includes("duplicate key") 
-        ? "Email atau Username sudah terdaftar. Silakan gunakan yang lain."
+        ? "Email, Username, atau Profile ID sudah terdaftar. Gunakan yang lain."
+        : error.message.includes("violates foreign key constraint")
+        ? "Grup ID yang dipilih tidak valid."
         : error.message;
 
     return new Response(
       JSON.stringify({ error: friendlyErrorMessage }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
+        status: 500, // Mengembalikan 500 sebagai indikasi internal error (meski sudah difilter)
       },
     );
   }

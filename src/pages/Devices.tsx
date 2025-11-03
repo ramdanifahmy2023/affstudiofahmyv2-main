@@ -26,6 +26,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
+// IMPORT HOOK BARU
+import { useExport } from "@/hooks/useExport";
 // IMPORT DIALOG
 import { AddDeviceDialog } from "@/components/Device/AddDeviceDialog";
 import { EditDeviceDialog } from "@/components/Device/EditDeviceDialog"; 
@@ -70,6 +72,8 @@ const Devices = () => {
     delete: null,
   });
 
+  // INISIALISASI HOOK EXPORT
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
 
   const canManageDevices =
     profile?.role === "superadmin" || profile?.role === "leader";
@@ -123,6 +127,42 @@ const Devices = () => {
       setLoading(false);
     }
   };
+  
+  // FUNGSI UNTUK EXPORT DATA
+  const exportDevices = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'ID Device', dataKey: 'device_id' },
+      { header: 'IMEI', dataKey: 'imei' },
+      { header: 'Akun Google', dataKey: 'google_account' },
+      { header: 'Group', dataKey: 'group_name' },
+      { header: 'Tgl Beli', dataKey: 'purchase_date_formatted' },
+      { header: 'Harga Beli (Rp)', dataKey: 'purchase_price_formatted' },
+      { header: 'Link Bukti', dataKey: 'screenshot_url' },
+    ];
+    
+    // Siapkan data untuk export
+    const exportData = filteredDevices.map(d => ({
+        ...d,
+        group_name: d.groups?.name || '-',
+        purchase_date_formatted: formatDate(d.purchase_date),
+        purchase_price_formatted: formatCurrency(d.purchase_price), // Format untuk display
+        purchase_price_raw: d.purchase_price || 0, // Data mentah jika diperlukan
+    }));
+
+    const options = {
+        filename: 'Inventaris_Device',
+        title: 'Laporan Inventaris Device',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
 
   useEffect(() => {
     fetchDevices();
@@ -235,10 +275,23 @@ const Devices = () => {
                 />
               </div>
               <Button variant="outline" disabled>Filter (Soon)</Button>
-              <Button variant="outline" className="gap-2" disabled>
-                <Download className="h-4 w-4" />
-                Export (Soon)
-              </Button>
+               {/* DROP DOWN MENU UNTUK EXPORT */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2" disabled={isExporting || filteredDevices.length === 0}>
+                        <Download className="h-4 w-4" />
+                        {isExporting ? 'Mengekspor...' : 'Export'}
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => exportDevices('pdf')} disabled={isExporting}>
+                        Export PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportDevices('csv')} disabled={isExporting}>
+                        Export CSV
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </CardHeader>
           <CardContent>
