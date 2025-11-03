@@ -29,6 +29,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+// --- 1. IMPORT BARU UNTUK TANGGAL ---
+import { format, subDays, eachDayOfInterval, parseISO } from "date-fns";
+import { id as indonesiaLocale } from "date-fns/locale";
 
 // --- INTERFACE & HELPER DARI PERFORMANCE.TS (Untuk Ranking/Chart) ---
 interface EmployeePerformance {
@@ -44,6 +47,12 @@ interface EmployeePerformance {
 type CommissionBreakdown = { name: string; value: number; color: string };
 type GroupPerformance = { name: string; omset: number };
 type AccountPlatform = { name: string; value: number; color: string };
+// --- Tipe Data Baru untuk Sales Trend ---
+type SalesTrendData = {
+  date: string; // Format 'dd MMM'
+  sales: number;
+  commission: number;
+};
 // ------------------------------------
 
 
@@ -78,8 +87,10 @@ const CHART_COLORS = {
 
 const Dashboard = () => {
   const { profile } = useAuth();
-  const [filterDateStart, setFilterDateStart] = useState("");
-  const [filterDateEnd, setFilterDateEnd] = useState("");
+  // --- 2. UPDATE FILTER STATE DENGAN DEFAULT 30 HARI ---
+  const [filterDateStart, setFilterDateStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
+  // ----------------------------------------------------
   
   // State untuk Data Real-time
   const [loadingRanking, setLoadingRanking] = useState(true);
@@ -88,6 +99,8 @@ const Dashboard = () => {
   const [commissionData, setCommissionData] = useState<CommissionBreakdown[]>([]);
   const [groupData, setGroupData] = useState<GroupPerformance[]>([]);
   const [accountData, setAccountData] = useState<AccountPlatform[]>([]);
+  // --- 3. STATE BARU UNTUK SALES TREND ---
+  const [salesTrendData, setSalesTrendData] = useState<SalesTrendData[]>([]);
   
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -107,16 +120,35 @@ const Dashboard = () => {
       minimumFractionDigits: 0,
     }).format(value);
     
-  const handleFilterSubmit = () => {
-    console.log("Filtering applied:", { start: filterDateStart, end: filterDateEnd });
-    // TODO: Terapkan filter ke fetchRankingData dan fetchChartData
-    toast.info("Fitur filter global sedang dalam pengembangan.");
-  };
+  // --- 4. FUNGSI BARU UNTUK MENGGABUNGKAN FETCH ---
+  const fetchData = useCallback(async (startDate: string, endDate: string) => {
+    setLoadingRanking(true);
+    setLoadingCharts(true);
+    
+    // Validasi tanggal
+    if (!startDate || !endDate || parseISO(startDate) > parseISO(endDate)) {
+        toast.error("Rentang tanggal tidak valid.");
+        setLoadingRanking(false);
+        setLoadingCharts(false);
+        return;
+    }
+    
+    // Panggil kedua fungsi fetch secara paralel
+    await Promise.all([
+      fetchRankingData(startDate, endDate),
+      fetchChartData(startDate, endDate)
+    ]);
+  }, []); // useCallback dependencies kosong, karena fungsi fetch di dalamnya sudah useCallback
+
   
   // --- FETCH RANKING DATA (REAL) ---
-  const fetchRankingData = useCallback(async () => {
+  // (Menerima parameter tanggal)
+  const fetchRankingData = useCallback(async (startDate: string, endDate: string) => {
     setLoadingRanking(true);
     try {
+        // Query KPI berdasarkan rentang bulan (agak tricky, kita ambil 2 bulan terakhir)
+        const twoMonthsAgo = format(subDays(parseISO(startDate), 30), "yyyy-MM-dd");
+    
         const { data: kpiResults, error: kpiError } = await supabase
             .from('kpi_targets')
             .select(`
@@ -133,12 +165,12 @@ const Dashboard = () => {
                 ),
                 target_month
             `)
+            .gte('target_month', twoMonthsAgo) // Ambil data 2 bulan terakhir
             .order('target_month', { ascending: false });
 
         if (kpiError) throw kpiError;
         
         const rawData = kpiResults as any[];
-
         const latestKpiMap = new Map<string, EmployeePerformance>();
         
         rawData.forEach((item) => {
@@ -176,13 +208,16 @@ const Dashboard = () => {
   }, []);
   
   // --- FUNGSI BARU: FETCH DATA UNTUK CHARTS ---
-  const fetchChartData = useCallback(async () => {
+  // (Menerima parameter tanggal)
+  const fetchChartData = useCallback(async (startDate: string, endDate: string) => {
     setLoadingCharts(true);
     try {
-      // 1. Fetch Commission Breakdown
+      // 1. Fetch Commission Breakdown (Berdasarkan filter tanggal)
       const { data: commsData, error: commsError } = await supabase
         .from('commissions')
-        .select('gross_commission, net_commission, paid_commission');
+        .select('gross_commission, net_commission, paid_commission')
+        .gte('payment_date', startDate)
+        .lte('payment_date', endDate);
         
       if (commsError) throw commsError;
 
@@ -196,7 +231,8 @@ const Dashboard = () => {
         { name: "Cair", value: paid, color: CHART_COLORS.yellow },
       ]);
 
-      // 2. Fetch Group Performance (dari KPI data)
+      // 2. Fetch Group Performance (dari KPI data, query ini tidak terpengaruh filter tanggal)
+      // (Kita asumsikan ini adalah data "All Time" seperti sebelumnya)
       const { data: groupPerfData, error: groupPerfError } = await supabase
         .from('kpi_targets')
         .select(`
@@ -215,12 +251,12 @@ const Dashboard = () => {
 
       const groupDataArray = Array.from(groupOmsetMap.entries())
         .map(([name, omset]) => ({ name, omset }))
-        .sort((a, b) => b.omset - a.omset) // Urutkan dari terbesar
-        .slice(0, 5); // Ambil top 5
+        .sort((a, b) => b.omset - a.omset) 
+        .slice(0, 5); 
         
       setGroupData(groupDataArray);
       
-      // 3. Fetch Account Platform Breakdown
+      // 3. Fetch Account Platform Breakdown (Tidak terpengaruh filter tanggal)
       const { data: accData, error: accError } = await supabase
         .from('accounts')
         .select('platform')
@@ -239,6 +275,57 @@ const Dashboard = () => {
         { name: "Shopee", value: shopeeCount, color: CHART_COLORS.shopee },
         { name: "TikTok", value: tiktokCount, color: CHART_COLORS.tiktok },
       ]);
+      
+      // --- 4. FETCH DATA UNTUK SALES TREND ---
+      // A. Fetch Daily Reports (Omset)
+      const { data: salesData, error: salesError } = await supabase
+          .from('daily_reports')
+          .select('report_date, total_sales')
+          .gte('report_date', startDate)
+          .lte('report_date', endDate);
+      if (salesError) throw salesError;
+      
+      // B. Fetch Commissions (Komisi Cair)
+      const { data: commissionTrendData, error: commissionTrendError } = await supabase
+          .from('commissions')
+          .select('payment_date, paid_commission')
+          .gte('payment_date', startDate)
+          .lte('payment_date', endDate);
+      if (commissionTrendError) throw commissionTrendError;
+      
+      // C. Proses & Gabungkan Data
+      const trendMap = new Map<string, { date: string, sales: number, commission: number }>();
+      const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
+
+      // Inisialisasi Map
+      days.forEach(day => {
+          const dateKey = format(day, 'yyyy-MM-dd');
+          const dateLabel = format(day, 'dd MMM', { locale: indonesiaLocale });
+          trendMap.set(dateKey, { date: dateLabel, sales: 0, commission: 0 });
+      });
+      
+      // Agregasi Omset Harian
+      (salesData as any[]).forEach(report => {
+          const dateKey = report.report_date;
+          if (trendMap.has(dateKey)) {
+              const current = trendMap.get(dateKey)!;
+              current.sales += (report.total_sales || 0);
+              trendMap.set(dateKey, current);
+          }
+      });
+      
+      // Agregasi Komisi Cair Harian
+      (commissionTrendData as any[]).forEach(comm => {
+          const dateKey = comm.payment_date;
+           if (dateKey && trendMap.has(dateKey)) {
+              const current = trendMap.get(dateKey)!;
+              current.commission += (comm.paid_commission || 0);
+              trendMap.set(dateKey, current);
+          }
+      });
+      
+      setSalesTrendData(Array.from(trendMap.values()));
+      // --- AKHIR FETCH SALES TREND ---
 
     } catch (error: any) {
         toast.error("Gagal memuat data Charts Dashboard.");
@@ -248,13 +335,17 @@ const Dashboard = () => {
     }
   }, []);
   
-  
+  // --- 5. UPDATE USEEFFECT UNTUK MEMANGGIL FETCHDATA ---
   useEffect(() => {
     if (profile) {
-        fetchRankingData();
-        fetchChartData();
+        fetchData(filterDateStart, filterDateEnd);
     }
-  }, [profile, fetchRankingData, fetchChartData]);
+  }, [profile, fetchData, filterDateStart, filterDateEnd]);
+  
+  // --- 6. UPDATE HANDLER FILTER ---
+  const handleFilterSubmit = () => {
+    fetchData(filterDateStart, filterDateEnd);
+  };
   
   // Filter Ranking Data berdasarkan Search Term
   const filteredRankingData = rankingData.filter(e => 
@@ -262,18 +353,7 @@ const Dashboard = () => {
     e.group.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // --- DATA DUMMY UNTUK CHART TREN (Sementara) ---
-  const dummySalesData = [
-    { name: "Mon", sales: 4000, commission: 2400 },
-    { name: "Tue", sales: 3000, commission: 1398 },
-    { name: "Wed", sales: 2000, commission: 9800 },
-    { name: "Thu", sales: 2780, commission: 3908 },
-    { name: "Fri", sales: 1890, commission: 4800 },
-    { name: "Sat", sales: 2390, commission: 3800 },
-    { name: "Sun", sales: 3490, commission: 4300 },
-  ];
-  // --- END DATA DUMMY ---
-
+  // (Data dummy dihapus)
 
   return (
     <MainLayout>
@@ -302,8 +382,14 @@ const Dashboard = () => {
                   onChange={(e) => setFilterDateEnd(e.target.value)}
                 />
               </div>
-              <Button onClick={handleFilterSubmit} className="gap-2">
-                <Search className="h-4 w-4" /> Terapkan Filter
+              {/* --- 7. AKTIFKAN TOMBOL FILTER --- */}
+              <Button onClick={handleFilterSubmit} className="gap-2" disabled={loadingCharts || loadingRanking}>
+                { (loadingCharts || loadingRanking) ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )} 
+                Terapkan Filter
               </Button>
             </div>
           </CardContent>
@@ -315,50 +401,59 @@ const Dashboard = () => {
 
         {/* --- Charts Row 1 --- */}
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
-          {/* Chart Tren Omset */}
+          {/* --- 8. UPDATE CHART TREN OMSET (REAL DATA) --- */}
           <Card className="lg:col-span-2"> 
             <CardHeader>
-              <CardTitle>Tren Omset & Komisi (Dummy)</CardTitle>
-               <CardDescription>Chart ini masih menggunakan data dummy. Fetch data real-time harian/mingguan akan ditambahkan.</CardDescription>
+              <CardTitle>Tren Omset & Komisi Cair</CardTitle>
+               <CardDescription>Menampilkan data harian berdasarkan filter tanggal di atas.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={dummySalesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                  <YAxis stroke="hsl(var(--muted-foreground))" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "var(--radius)",
-                    }}
-                    formatter={(value: number) => formatCurrencyForChart(value)}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="sales"
-                    stroke={CHART_COLORS.blue}
-                    strokeWidth={2}
-                    name="Omset"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="commission"
-                    stroke={CHART_COLORS.green}
-                    strokeWidth={2}
-                    name="Komisi"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {loadingCharts ? (
+                 <div className="flex justify-center items-center h-[300px]">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                 </div>
+               ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={salesTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
+                    <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(val) => formatCurrencyForChart(val)} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "var(--radius)",
+                      }}
+                      formatter={(value: number) => formatCurrencyForChart(value)}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="sales"
+                      stroke={CHART_COLORS.blue}
+                      strokeWidth={2}
+                      name="Omset Harian"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="commission"
+                      stroke={CHART_COLORS.green}
+                      strokeWidth={2}
+                      name="Komisi Cair"
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
+          {/* --- AKHIR PERUBAHAN CHART TREN --- */}
 
           {/* Chart Breakdown Komisi (REAL DATA) */}
           <Card>
             <CardHeader>
-              <CardTitle>Breakdown Komisi (All Time)</CardTitle>
+              <CardTitle>Breakdown Komisi (Filter)</CardTitle>
             </CardHeader>
             <CardContent>
              {loadingCharts ? (
@@ -397,6 +492,7 @@ const Dashboard = () => {
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Performa Group (Top 5 Omset)</CardTitle>
+              <CardDescription>Berdasarkan total omset aktual di KPI (All Time).</CardDescription>
             </CardHeader>
             <CardContent>
              {loadingCharts ? (
@@ -428,6 +524,7 @@ const Dashboard = () => {
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Breakdown Platform Akun</CardTitle>
+              <CardDescription>Total akun terdaftar (All Time).</CardDescription>
             </CardHeader>
             <CardContent>
             {loadingCharts ? (
