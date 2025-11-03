@@ -25,12 +25,14 @@ import ProfitLoss from "./pages/ProfitLoss";
 import KPI from "./pages/KPI";
 import Knowledge from "./pages/Knowledge";
 import Profile from "./pages/Profile";
+import AuditLogs from "./pages/AuditLogs"; // <-- Import Rute Baru
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Definisi Role untuk akses ke halaman Management/Financial (Semua kecuali Staff)
+// Definisi Role (MANAGEMENT_ROLES sudah disesuaikan untuk blokir Staff)
 const MANAGEMENT_ROLES = ["superadmin", "leader", "admin", "viewer"];
+const MANAGEMENT_ROLES_ADMIN_ONLY = ["superadmin", "leader", "admin"]; // Role untuk Audit Logs
 const ALL_ROLES = ["superadmin", "leader", "admin", "staff", "viewer"];
 
 const App = () => (
@@ -43,6 +45,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<Login />} />
+            
+            {/* --- DASHBOARD (Akses Semua Role) --- */}
             <Route
               path="/dashboard"
               element={
@@ -51,7 +55,10 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
             {/* --- RESTRICTED PAGES (Block Staff) --- */}
+            
+            {/* Performance */}
             <Route
               path="/performance"
               element={
@@ -60,6 +67,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Commissions */}
             <Route
               path="/commissions"
               element={
@@ -68,6 +77,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Cashflow */}
             <Route
               path="/cashflow"
               element={
@@ -76,6 +87,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Employees */}
             <Route
               path="/employees"
               element={
@@ -84,6 +97,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Devices */}
             <Route
               path="/devices"
               element={
@@ -92,6 +107,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Accounts */}
             <Route
               path="/accounts"
               element={
@@ -100,6 +117,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Groups & Group Details */}
             <Route
               path="/groups"
               element={
@@ -116,6 +135,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Assets */}
             <Route
               path="/assets"
               element={
@@ -124,6 +145,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Debt & Receivable */}
             <Route
               path="/debt-receivable"
               element={
@@ -132,6 +155,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* KPI Targets */}
             <Route
               path="/kpi"
               element={
@@ -140,6 +165,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Profit/Loss */}
             <Route
               path="/profit-loss"
               element={
@@ -148,8 +175,20 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+
+            {/* --- AUDIT LOGS (Hanya untuk Superadmin, Leader, Admin) --- */}
+            <Route
+              path="/audit-logs"
+              element={
+                <ProtectedRoute allowedRoles={MANAGEMENT_ROLES_ADMIN_ONLY}>
+                  <AuditLogs />
+                </ProtectedRoute>
+              }
+            />
             
             {/* --- STAFF ONLY / ALL ACCESS PAGES --- */}
+            
+            {/* Daily Report (Hanya Staff) */}
             <Route
               path="/daily-report"
               element={
@@ -158,6 +197,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Attendance (Semua role, tapi tampilan beda) */}
             <Route
               path="/attendance"
               element={
@@ -166,6 +207,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Knowledge (Semua role) */}
             <Route
               path="/knowledge"
               element={
@@ -174,6 +217,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
+            {/* Profile (Semua role) */}
             <Route
               path="/profile"
               element={
@@ -182,6 +227,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

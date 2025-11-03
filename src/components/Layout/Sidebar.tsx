@@ -17,6 +17,7 @@ import {
   BookOpen, 
   Scale, 
   LogOut,
+  FileClock, // <-- Icon untuk Audit Logs
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Definisi peran yang diizinkan untuk Management/Financial (Semua kecuali Staff)
 const MANAGEMENT_ROLES = ["superadmin", "leader", "admin", "viewer"];
+const MANAGEMENT_ROLES_ADMIN_ONLY = ["superadmin", "leader", "admin"];
 const ALL_ROLES = ["superadmin", "leader", "admin", "staff", "viewer"];
 
 interface NavItem {
@@ -31,28 +33,33 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   // Roles: Jika tidak didefinisikan, artinya SEMUA ROLE memiliki akses.
-  // Jika didefinisikan, hanya role di dalam array yang punya akses.
   roles?: string[]; 
 }
 
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  
   // RESTRICTED PAGES (Hanya untuk Management, Admin, Viewer)
-  { title: "Performa", href: "/performance", icon: TrendingUp, roles: MANAGEMENT_ROLES },
-  { title: "Laporan Komisi", href: "/commissions", icon: DollarSign, roles: MANAGEMENT_ROLES }, 
-  { title: "Cashflow", href: "/cashflow", icon: Wallet, roles: MANAGEMENT_ROLES },
-  { title: "Assets", href: "/assets", icon: FileSpreadsheet, roles: MANAGEMENT_ROLES },
-  { title: "Hutang & Piutang", href: "/debt-receivable", icon: Scale, roles: MANAGEMENT_ROLES }, 
-  { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp, roles: MANAGEMENT_ROLES }, 
+  { title: "Performance", href: "/performance", icon: TrendingUp, roles: MANAGEMENT_ROLES },
   { title: "KPI Targets", href: "/kpi", icon: Target, roles: MANAGEMENT_ROLES },
-  { title: "Manage Karyawan", href: "/employees", icon: Users, roles: MANAGEMENT_ROLES },
+  { title: "Employees", href: "/employees", icon: Users, roles: MANAGEMENT_ROLES },
+  { title: "Groups", href: "/groups", icon: Package, roles: MANAGEMENT_ROLES },
+  { title: "Accounts", href: "/accounts", icon: UserCircle, roles: MANAGEMENT_ROLES },
   { title: "Devices", href: "/devices", icon: Smartphone, roles: MANAGEMENT_ROLES },
-  { title: "Akun Affiliate", href: "/accounts", icon: UserCircle, roles: MANAGEMENT_ROLES },
-  { title: "Manage Groups", href: "/groups", icon: Package, roles: MANAGEMENT_ROLES },
+  { title: "Assets", href: "/assets", icon: FileSpreadsheet, roles: MANAGEMENT_ROLES },
 
-  // STAFF PAGES
+  { title: "Commissions", href: "/commissions", icon: DollarSign, roles: MANAGEMENT_ROLES }, 
+  { title: "Cashflow", href: "/cashflow", icon: Wallet, roles: MANAGEMENT_ROLES },
+  { title: "Debt & Receivable", href: "/debt-receivable", icon: Scale, roles: MANAGEMENT_ROLES }, 
+  { title: "Laba Rugi", href: "/profit-loss", icon: TrendingUp, roles: MANAGEMENT_ROLES }, 
+
+  // ITEM BARU: AUDIT LOGS
+  { title: "Audit Logs", href: "/audit-logs", icon: FileClock, roles: MANAGEMENT_ROLES_ADMIN_ONLY },
+  // -----------------------
+
+  // STAFF PAGES (Akses Karyawan)
   { title: "Daily Report", href: "/daily-report", icon: FileText, roles: ["staff"] },
-  { title: "Absensi", href: "/attendance", icon: UserCircle, roles: ALL_ROLES }, 
+  { title: "Attendance", href: "/attendance", icon: UserCircle, roles: ALL_ROLES }, 
   { title: "SOP & Knowledge", href: "/knowledge", icon: BookOpen, roles: ALL_ROLES },
 ];
 
