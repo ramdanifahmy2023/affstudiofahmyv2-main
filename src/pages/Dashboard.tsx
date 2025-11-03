@@ -1,4 +1,5 @@
 // src/pages/Dashboard.tsx
+
 import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import {
   Search,
   Loader2,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  FileText,
 } from "lucide-react";
 import {
   LineChart,
@@ -29,10 +34,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-// --- 1. IMPORT BARU UNTUK TANGGAL ---
+import { Link, useNavigate } from "react-router-dom"; 
+// --- IMPORT TAMBAHAN ---
 import { format, subDays, eachDayOfInterval, parseISO } from "date-fns";
 import { id as indonesiaLocale } from "date-fns/locale";
-// --- TAMBAHAN IMPORT UNTUK FILTER ---
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -43,7 +48,7 @@ import {
 } from "@/components/ui/select";
 // ------------------------------------
 
-// --- INTERFACE & HELPER DARI PERFORMANCE.TS (Untuk Ranking/Chart) ---
+// --- INTERFACE DARI SEBELUMNYA ---
 interface EmployeePerformance {
     id: string;
     name: string;
@@ -53,27 +58,22 @@ interface EmployeePerformance {
     kpi: number; // total_kpi
 }
 
-// --- Tipe Data Baru untuk Charts ---
 type CommissionBreakdown = { name: string; value: number; color: string };
 type GroupPerformance = { name: string; omset: number };
 type AccountPlatform = { name: string; value: number; color: string };
-// --- Tipe Data Baru untuk Sales Trend ---
 type SalesTrendData = {
-  date: string; // Format 'dd MMM'
+  date: string; 
   sales: number;
   commission: number;
 };
-
-// --- Tipe Data Baru untuk Filter Group ---
 type Group = { id: string; name: string };
 // ------------------------------------
 
-
+// HELPER LOGIC KPI
 const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget: number, attend: number, aTarget: number) => {
-    // Bobot: Omset 50%, Komisi 30%, Absensi 20%
-    const sales_pct = (sTarget > 0) ? (sales / sTarget) * 100 : 0;
-    const commission_pct = (cTarget > 0) ? (comm / cTarget) * 100 : 0;
-    const attendance_pct = (aTarget > 0) ? (attend / aTarget) * 100 : 0;
+    const sales_pct = (sTarget > 0) ? ((sales / sTarget) * 100) : 0;
+    const commission_pct = (cTarget > 0) ? ((comm / cTarget) * 100) : 0;
+    const attendance_pct = (aTarget > 0) ? ((attend / aTarget) * 100) : 0;
     
     const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
     
@@ -81,43 +81,53 @@ const calculateTotalKpi = (sales: number, sTarget: number, comm: number, cTarget
 };
 
 const getKPIColorClass = (kpi: number) => {
-    if (kpi >= 90) return "text-success";
-    if (kpi >= 70) return "text-warning";
-    return "text-destructive";
+    if (kpi >= 100) return "text-success"; 
+    if (kpi >= 70) return "text-warning";  
+    return "text-destructive";             
 };
 
-// --- END INTERFACE & HELPER ---
+const getKpiColor = (kpi: number) => {
+    if (kpi >= 100) return "bg-success";
+    if (kpi >= 70) return "bg-warning";
+    return "bg-destructive";
+};
 
+const getKpiTextColor = (kpi: number) => {
+    if (kpi >= 100) return "text-success"; 
+    if (kpi >= 70) return "text-warning";  
+    return "text-destructive";             
+};
 // Warna untuk chart
 const CHART_COLORS = {
   blue: "hsl(var(--chart-1))",
   green: "hsl(var(--chart-2))",
   yellow: "hsl(var(--chart-3))",
-  shopee: "hsl(var(--chart-1))", // Biru untuk Shopee
-  tiktok: "hsl(var(--chart-2))", // Hijau untuk TikTok
+  shopee: "hsl(var(--chart-1))", 
+  tiktok: "hsl(var(--chart-2))", 
 };
 
 
 const Dashboard = () => {
-  const { profile } = useAuth();
-  // --- 2. UPDATE FILTER STATE DENGAN DEFAULT 30 HARI ---
+  const { profile, employee } = useAuth();
+  const navigate = useNavigate();
+  const isStaff = profile?.role === 'staff'; 
+  
+  // States Global (Disembunyikan untuk Staff, tapi logikanya tetap dipakai)
   const [filterDateStart, setFilterDateStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [filterDateEnd, setFilterDateEnd] = useState(format(new Date(), "yyyy-MM-dd"));
-  // ----------------------------------------------------
-  
-  // --- TAMBAHAN FILTER GROUP ---
   const [filterGroup, setFilterGroup] = useState("all");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
-  // -----------------------------
   
-  // State untuk Data Real-time
+  // State Data Real-time
   const [loadingRanking, setLoadingRanking] = useState(true);
   const [loadingCharts, setLoadingCharts] = useState(true);
   const [rankingData, setRankingData] = useState<EmployeePerformance[]>([]);
+  
+  const [myKpi, setMyKpi] = useState<EmployeePerformance | null>(null);
+  
   const [commissionData, setCommissionData] = useState<CommissionBreakdown[]>([]);
   const [groupData, setGroupData] = useState<GroupPerformance[]>([]);
   const [accountData, setAccountData] = useState<AccountPlatform[]>([]);
-  // --- 3. STATE BARU UNTUK SALES TREND ---
   const [salesTrendData, setSalesTrendData] = useState<SalesTrendData[]>([]);
   
   const [searchTerm, setSearchTerm] = useState("");
@@ -138,34 +148,37 @@ const Dashboard = () => {
       minimumFractionDigits: 0,
     }).format(value);
     
-  // --- 4. FUNGSI BARU UNTUK MENGGABUNGKAN FETCH ---
-  const fetchData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
+  // --- PERBAIKAN LOGIC FETCH DATA UTAMA ---
+  const fetchData = useCallback(async (startDate: string, endDate: string, groupId: string) => {
     setLoadingRanking(true);
     setLoadingCharts(true);
     
-    // Validasi tanggal
-    if (!startDate || !endDate || parseISO(startDate) > parseISO(endDate)) {
+    if (parseISO(startDate) > parseISO(endDate)) {
         toast.error("Rentang tanggal tidak valid.");
         setLoadingRanking(false);
         setLoadingCharts(false);
         return;
     }
     
-    // Panggil kedua fungsi fetch secara paralel
-    await Promise.all([
-      fetchRankingData(startDate, endDate, groupId), // PASS groupId
-      fetchChartData(startDate, endDate, groupId)    // PASS groupId
-    ]);
-  }, []);
+    // Perbedaan: Staff fetch data ranking TANPA filter group (groupId = 'all')
+    if (!isStaff) {
+       await Promise.all([
+          fetchRankingData(startDate, endDate, groupId), // Management pakai filter group
+          fetchChartData(startDate, endDate, groupId)
+       ]);
+    } else {
+       await fetchRankingData(startDate, endDate, 'all'); // Staff abaikan filter group (di frontend)
+    }
+    
+  }, [isStaff]);
 
   
-  // --- FETCH RANKING DATA (REAL) ---
-  // (Menerima parameter tanggal DAN GROUP)
-  const fetchRankingData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
+  // --- PERBAIKAN: FETCH RANKING DATA (Hapus Filter Group di Query untuk Staff) ---
+  const fetchRankingData = useCallback(async (startDate: string, endDate: string, groupId: string) => {
     setLoadingRanking(true);
     try {
         const twoMonthsAgo = format(subDays(parseISO(startDate), 30), "yyyy-MM-dd");
-    
+        
         let query = supabase
             .from('kpi_targets')
             .select(`
@@ -177,7 +190,7 @@ const Dashboard = () => {
                 actual_attendance,
                 employees!inner (
                     id,
-                    profiles ( full_name ),
+                    profiles!inner ( full_name, role ),
                     groups ( name, id )
                 ),
                 target_month
@@ -185,8 +198,12 @@ const Dashboard = () => {
             .gte('target_month', twoMonthsAgo)
             .order('target_month', { ascending: false });
 
-        // Terapkan filter grup pada join employees
-        if (groupId !== "all") {
+        // Filter berdasarkan Role Staff jika user adalah Staff
+        if (isStaff) {
+             query = query.eq('employees.profiles.role', 'staff');
+        } 
+        // Filter Group hanya berlaku untuk Management View
+        else if (groupId !== "all") {
              query = query.eq('employees.group_id', groupId);
         }
 
@@ -196,6 +213,9 @@ const Dashboard = () => {
         const rawData = kpiResults as any[];
         const latestKpiMap = new Map<string, EmployeePerformance>();
         
+        const currentEmployeeId = employee?.id;
+        let foundMyKpi: EmployeePerformance | null = null;
+
         rawData.forEach((item) => {
              const employeeId = item.employees.id;
              const calculatedKpi = calculateTotalKpi(
@@ -216,11 +236,17 @@ const Dashboard = () => {
             if (!latestKpiMap.has(employeeId)) {
                 latestKpiMap.set(employeeId, performanceRecord);
             }
+            
+            // Ekstrak KPI milik sendiri
+            if (employeeId === currentEmployeeId && !foundMyKpi) {
+                foundMyKpi = performanceRecord;
+            }
         });
 
         const uniqueData = Array.from(latestKpiMap.values());
         uniqueData.sort((a, b) => b.kpi - a.kpi);
         setRankingData(uniqueData);
+        if (isStaff) setMyKpi(foundMyKpi); 
 
     } catch (error: any) {
         toast.error("Gagal memuat data Ranking Dashboard.");
@@ -228,14 +254,15 @@ const Dashboard = () => {
     } finally {
         setLoadingRanking(false);
     }
-  }, []);
+  }, [employee, isStaff]);
   
-  // --- FUNGSI BARU: FETCH DATA UNTUK CHARTS ---
-  // (Menerima parameter tanggal DAN GROUP)
-  const fetchChartData = useCallback(async (startDate: string, endDate: string, groupId: string) => { // ADD groupId
+  // Fungsi fetchChartData (TIDAK DIUBAH, DILUAR SCOPE PERBAIKAN)
+  const fetchChartData = useCallback(async (startDate: string, endDate: string, groupId: string) => {
     setLoadingCharts(true);
+    
+    // ... (logic fetchChartData sebelumnya) ...
     try {
-      // 1. Fetch Commission Breakdown (Berdasarkan filter tanggal)
+      // 1. Fetch Commission Breakdown
       let commsQuery = supabase
         .from('commissions')
         .select('gross_commission, net_commission, paid_commission, accounts!inner(group_id)')
@@ -243,7 +270,7 @@ const Dashboard = () => {
         .lte('payment_date', endDate);
         
       if (groupId !== 'all') {
-          commsQuery = commsQuery.eq('accounts.group_id', groupId); // Terapkan filter grup
+          commsQuery = commsQuery.eq('accounts.group_id', groupId); 
       }
         
       const { data: commsData, error: commsError } = await commsQuery;
@@ -259,7 +286,7 @@ const Dashboard = () => {
         { name: "Cair", value: paid, color: CHART_COLORS.yellow },
       ]);
 
-      // 2. Fetch Group Performance (dari KPI data, All Time)
+      // 2. Fetch Group Performance 
       let groupPerfQuery = supabase
         .from('kpi_targets')
         .select(`
@@ -267,7 +294,6 @@ const Dashboard = () => {
           employees!inner ( groups ( name, id ) )
         `);
       
-      // Filter Group di sini juga (untuk Group Performance chart)
       if (groupId !== 'all') {
           groupPerfQuery = groupPerfQuery.eq('employees.groups.id', groupId);
       }
@@ -289,14 +315,14 @@ const Dashboard = () => {
         
       setGroupData(groupDataArray);
       
-      // 3. Fetch Account Platform Breakdown (Tidak terpengaruh filter tanggal)
+      // 3. Fetch Account Platform Breakdown
       let accQuery = supabase
         .from('accounts')
         .select('platform, group_id')
         .in('platform', ['shopee', 'tiktok']);
         
       if (groupId !== 'all') {
-         accQuery = accQuery.eq('group_id', groupId); // Terapkan filter grup
+         accQuery = accQuery.eq('group_id', groupId); 
       }
         
       const { data: accData, error: accError } = await accQuery;
@@ -314,7 +340,7 @@ const Dashboard = () => {
         { name: "TikTok", value: tiktokCount, color: CHART_COLORS.tiktok },
       ]);
       
-      // 4. FETCH DATA UNTUK SALES TREND (DAILY REPORTS & COMMISSIONS)
+      // 4. FETCH DATA UNTUK SALES TREND 
       
       // A. Fetch Daily Reports (Omset)
       let salesQuery = supabase
@@ -324,7 +350,6 @@ const Dashboard = () => {
           .lte('report_date', endDate);
           
       if (groupId !== 'all') {
-           // Gunakan .filter() untuk memastikan filter group_id di join devices
            salesQuery = salesQuery.eq('devices.group_id', groupId); 
       }
           
@@ -339,7 +364,6 @@ const Dashboard = () => {
           .lte('payment_date', endDate);
           
       if (groupId !== 'all') {
-           // Gunakan .filter() untuk memastikan filter group_id di join accounts
            commTrendQuery = commTrendQuery.eq('accounts.group_id', groupId); 
       }
           
@@ -350,14 +374,12 @@ const Dashboard = () => {
       const trendMap = new Map<string, { date: string, sales: number, commission: number }>();
       const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
 
-      // Inisialisasi Map
       days.forEach(day => {
           const dateKey = format(day, 'yyyy-MM-dd');
           const dateLabel = format(day, 'dd MMM', { locale: indonesiaLocale });
           trendMap.set(dateKey, { date: dateLabel, sales: 0, commission: 0 });
       });
       
-      // Agregasi Omset Harian
       (salesData as any[]).forEach(report => {
           const dateKey = report.report_date;
           if (trendMap.has(dateKey)) {
@@ -367,7 +389,6 @@ const Dashboard = () => {
           }
       });
       
-      // Agregasi Komisi Cair Harian
       (commissionTrendData as any[]).forEach(comm => {
           const dateKey = comm.payment_date;
            if (dateKey && trendMap.has(dateKey)) {
@@ -388,7 +409,7 @@ const Dashboard = () => {
   }, []);
   
   
-  // --- Fetch Groups Effect ---
+  // Fetch Groups Effect
   useEffect(() => {
     const fetchGroups = async () => {
         const { data, error } = await supabase.from("groups").select("id, name");
@@ -398,33 +419,191 @@ const Dashboard = () => {
             toast.error("Gagal memuat daftar grup.");
         }
     };
-    fetchGroups();
-  }, []);
+    // Hanya perlu fetch groups jika BUKAN Staff
+    if (!isStaff) {
+       fetchGroups();
+    }
+  }, [isStaff]);
   
-  // --- 5. UPDATE USEEFFECT UNTUK MEMANGGIL FETCHDATA ---
+  // USEEFFECT UTAMA
   useEffect(() => {
     if (profile) {
-        // Panggil fetchData dengan semua filter
-        fetchData(filterDateStart, filterDateEnd, filterGroup);
+        // Staff selalu menggunakan filter group 'all' saat memanggil fetchData
+        const initialGroupId = isStaff ? 'all' : filterGroup;
+        fetchData(filterDateStart, filterDateEnd, initialGroupId);
     }
-  }, [profile, fetchData, filterDateStart, filterDateEnd, filterGroup]); // ADD filterGroup
+  }, [profile, employee, fetchData, filterDateStart, filterDateEnd, filterGroup, isStaff]);
   
-  // --- 6. UPDATE HANDLER FILTER ---
   const handleFilterSubmit = () => {
-    // Memanggil fetchData sudah cukup karena dipicu oleh perubahan state filter
     fetchData(filterDateStart, filterDateEnd, filterGroup);
   };
   
-  // Filter Ranking Data berdasarkan Search Term
   const filteredRankingData = rankingData.filter(e => 
     e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.group.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
+  // --- KOMPONEN BARU: STAFF SHORTCUTS (TIDAK DIUBAH) ---
+  const StaffShortcuts = () => (
+    <Card className="shadow-lg border-primary/50">
+        <CardHeader>
+            <CardTitle className="text-xl text-primary">Aksi Cepat Staff</CardTitle>
+            <CardDescription>Akses cepat ke tugas harian Anda.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col space-y-3">
+            <Button className="w-full gap-2 py-6 text-lg" onClick={() => navigate('/attendance')}>
+                <Calendar className="h-6 w-6" />
+                Absensi (Check-in/Check-out)
+            </Button>
+            <Button className="w-full gap-2 py-6 text-lg" variant="secondary" onClick={() => navigate('/daily-report')}>
+                <FileText className="h-6 w-6" />
+                Jurnal Laporan Harian
+            </Button>
+        </CardContent>
+    </Card>
+  );
+
+  // --- KOMPONEN BARU: STAFF PERSONAL KPI (TIDAK DIUBAH) ---
+  const StaffPersonalKpi = () => {
+      if (!myKpi) {
+          return (
+             <Card>
+                <CardHeader><CardTitle>KPI Anda (Bulan Ini)</CardTitle></CardHeader>
+                <CardContent>
+                   <p className="text-muted-foreground">Data KPI bulan ini belum tersedia.</p>
+                </CardContent>
+             </Card>
+          )
+      }
+      return (
+        <Card className="shadow-lg border-primary/50">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    KPI Anda (Bulan Terakhir)
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                            <p className="font-medium text-lg">{myKpi.name}</p>
+                            <p className="text-sm text-muted-foreground">{myKpi.group}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xl font-bold">
+                                {formatCurrency(myKpi.omset)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">Omset Total</p>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-semibold">Total KPI</span>
+                            <span className={cn("text-xl font-bold", getKpiTextColor(myKpi.kpi))}>
+                                {myKpi.kpi.toFixed(1)}%
+                            </span>
+                        </div>
+                        <Progress 
+                            value={myKpi.kpi} 
+                            className={cn("h-3 w-full", getKpiColor(myKpi.kpi))} 
+                        />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+      );
+  }
+
+  // ==========================================
+  //            RENDERING UTAMA
+  // ==========================================
+  
+  // --- STAFF VIEW ---
+  if (isStaff) {
+      return (
+        <MainLayout>
+          <div className="space-y-6">
+            <h1 className="text-3xl font-bold">Dashboard Kinerja Anda</h1>
+            
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                 <StaffShortcuts />
+                 <div className="md:col-span-1 lg:col-span-2">
+                    <StaffPersonalKpi />
+                 </div>
+            </div>
+            
+            <Card>
+                <CardHeader>
+                  {/* --- PERBAIKAN JUDUL CARD --- */}
+                  <CardTitle>Ranking Karyawan Staff Keseluruhan</CardTitle>
+                  <CardDescription>
+                      Performa KPI seluruh karyawan dengan role Staff (Bulan Terakhir).
+                  </CardDescription>
+                  {/* ----------------------------- */}
+                  <Input 
+                    placeholder="Cari nama karyawan..."
+                    className="w-full mt-2"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </CardHeader>
+                <CardContent>
+                   {loadingRanking ? (
+                      <div className="flex justify-center items-center h-64">
+                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    ) : (
+                      <div className="space-y-4 max-h-96 overflow-y-auto">
+                          {filteredRankingData.length === 0 && (
+                              <p className="text-center text-muted-foreground">Tidak ada data ranking staff ditemukan.</p>
+                          )}
+                          {filteredRankingData
+                              .map((employee, index) => (
+                              <div
+                                  key={employee.id}
+                                  className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                              >
+                                  <div 
+                                      className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm"
+                                  >
+                                      {index + 1}
+                                  </div>
+                                  <div className="flex-1">
+                                      <p className="font-medium">{employee.name}</p>
+                                      <p className="text-xs text-muted-foreground">{employee.group}</p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                          <Progress value={employee.kpi} className={cn("flex-1 h-1.5", getKpiColor(employee.kpi))} />
+                                          <span className={cn("text-xs w-12 text-right font-semibold", getKPIColorClass(employee.kpi))}>
+                                              {employee.kpi.toFixed(1)}%
+                                          </span>
+                                      </div>
+                                  </div>
+                                  <div className="text-right hidden sm:block">
+                                      <p className="text-sm font-semibold">
+                                          {formatCurrency(employee.omset)}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">Omset</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                    )}
+                </CardContent>
+            </Card>
+          </div>
+        </MainLayout>
+      );
+  }
+  
+  // --- MANAGEMENT/ADMIN/VIEWER VIEW (Comprehensive View) ---
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* --- FILTER GLOBAL (Di-simplify) --- */}
+        <h1 className="text-3xl font-bold">Dashboard Utama</h1>
+
+        {/* --- FILTER GLOBAL --- */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-wrap gap-4 items-end">
@@ -448,7 +627,6 @@ const Dashboard = () => {
                   onChange={(e) => setFilterDateEnd(e.target.value)}
                 />
               </div>
-              {/* --- TAMBAHAN FILTER GROUP --- */}
               <div className="flex-1 min-w-[150px] space-y-1">
                 <Label htmlFor="filter-group">Group</Label>
                 <Select value={filterGroup} onValueChange={setFilterGroup}>
@@ -463,9 +641,7 @@ const Dashboard = () => {
                   </SelectContent>
                 </Select>
               </div>
-              {/* --- AKHIR TAMBAHAN FILTER GROUP --- */}
               
-              {/* --- 7. AKTIFKAN TOMBOL FILTER --- */}
               <Button onClick={handleFilterSubmit} className="gap-2" disabled={loadingCharts || loadingRanking}>
                 { (loadingCharts || loadingRanking) ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -478,13 +654,13 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* === KOMPONEN METRIK REAL TIME === */}
+        {/* === KOMPONEN METRIK REAL TIME (FINANSIAL) === */}
         <DashboardStats />
         {/* ================================== */}
 
         {/* --- Charts Row 1 --- */}
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
-          {/* --- 8. UPDATE CHART TREN OMSET (REAL DATA) --- */}
+          {/* Chart Tren Omset */}
           <Card className="lg:col-span-2"> 
             <CardHeader>
               <CardTitle>Tren Omset & Komisi Cair</CardTitle>
@@ -531,9 +707,8 @@ const Dashboard = () => {
               )}
             </CardContent>
           </Card>
-          {/* --- AKHIR PERUBAHAN CHART TREN --- */}
 
-          {/* Chart Breakdown Komisi (REAL DATA) */}
+          {/* Chart Breakdown Komisi */}
           <Card>
             <CardHeader>
               <CardTitle>Breakdown Komisi (Filter)</CardTitle>
@@ -557,7 +732,7 @@ const Dashboard = () => {
                         }}
                         formatter={(value: number) => formatCurrencyForChart(value)}
                     />
-                    <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 8, 8, 0]} name="Nilai">
+                    <Bar dataKey="value" fill={CHART_COLORS.blue} radius={[0, 8, 8, 0]} name="Nilai">
                        {commissionData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
@@ -571,7 +746,7 @@ const Dashboard = () => {
 
         {/* --- Charts Row 2 & Ranking --- */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Chart Performa Group (REAL DATA) */}
+          {/* Chart Performa Group */}
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Performa Group (Top 5 Omset)</CardTitle>
@@ -603,7 +778,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
           
-          {/* Chart Performa Akun (REAL DATA) */}
+          {/* Chart Performa Akun */}
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle>Breakdown Platform Akun</CardTitle>
@@ -639,7 +814,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Ranking Table (REAL DATA) */}
+          {/* Ranking Table */}
           <Card className="lg:col-span-1">
             <CardHeader>
               <CardTitle>Top Performers (Bulan Terakhir)</CardTitle>
@@ -676,7 +851,7 @@ const Dashboard = () => {
                             <div className="flex-1">
                                 <p className="font-medium">{employee.name}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <Progress value={employee.kpi} className="flex-1 h-1.5" />
+                                    <Progress value={employee.kpi} className={cn("flex-1 h-1.5", getKpiColor(employee.kpi))} />
                                     <span className={cn("text-xs w-12 text-right font-semibold", getKPIColorClass(employee.kpi))}>
                                         {employee.kpi.toFixed(1)}%
                                     </span>
