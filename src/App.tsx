@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,12 +18,13 @@ import Employees from "./pages/Employees";
 import Devices from "./pages/Devices";
 import Accounts from "./pages/Accounts";
 import Groups from "./pages/Groups";
-import Assets from "./pages/Asset"; // Import Assets
-import DebtReceivable from "./pages/DebtReceivable"; // <-- BARIS BARU
-import ProfitLoss from "./pages/ProfitLoss"; // <-- BARIS BARU
-import KPI from "./pages/KPI"; // <-- BARIS BARU
-import Knowledge from "./pages/Knowledge"; // <-- BARIS BARU
-import Profile from "./pages/Profile"; // <-- 1. IMPORT BARU
+import GroupDetails from "./pages/GroupDetails"; // <-- 1. IMPORT BARU
+import Assets from "./pages/Asset";
+import DebtReceivable from "./pages/DebtReceivable";
+import ProfitLoss from "./pages/ProfitLoss";
+import KPI from "./pages/KPI";
+import Knowledge from "./pages/Knowledge";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -116,7 +119,18 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
+            
+            {/* --- 2. TAMBAHKAN RUTE BARU DI SINI --- */}
+            <Route
+              path="/groups/:groupId"
+              element={
+                <ProtectedRoute>
+                  <GroupDetails />
+                </ProtectedRoute>
+              }
+            />
+            {/* ------------------------------------- */}
+            
             <Route
               path="/assets"
               element={
@@ -125,8 +139,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* -------------------------------------- */}
-            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
             <Route
               path="/debt-receivable"
               element={
@@ -135,8 +147,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* -------------------------------------- */}
-            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
             <Route
               path="/kpi"
               element={
@@ -145,8 +155,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* -------------------------------------- */}
-            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
             <Route
               path="/knowledge"
               element={
@@ -155,9 +163,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* -------------------------------------- */}
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            {/* ---- TAMBAHKAN ROUTE DI BAWAH INI ---- */}
             <Route
               path="/profit-loss"
               element={
@@ -166,8 +171,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* -------------------------------------- */}
-            {/* --- 2. TAMBAHKAN BLOK INI --- */}
             <Route
               path="/profile"
               element={
@@ -176,7 +179,6 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            {/* --- AKHIR BLOK BARU --- */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

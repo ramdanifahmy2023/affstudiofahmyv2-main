@@ -1,6 +1,7 @@
 // src/pages/Groups.tsx
 
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom"; // <-- 1. IMPORT Link
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ import {
   MoreVertical,
   Edit,
   Trash2,
+  Eye, // <-- 2. IMPORT IKON BARU (OPSIONAL)
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -132,7 +134,16 @@ const Groups = () => {
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
-                      <CardTitle>{group.name}</CardTitle>
+                      {/* --- 3. UBAH CardTitle MENJADI LINK --- */}
+                      <CardTitle>
+                        <Link 
+                          to={`/groups/${group.id}`} 
+                          className="hover:underline hover:text-primary transition-colors"
+                        >
+                          {group.name}
+                        </Link>
+                      </CardTitle>
+                      {/* ------------------------------------- */}
                       <CardDescription>
                         {group.description || "Tidak ada deskripsi."}
                       </CardDescription>
@@ -145,6 +156,14 @@ const Groups = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {/* --- 4. TAMBAHKAN LINK "LIHAT DETAIL" --- */}
+                          <DropdownMenuItem asChild>
+                            <Link to={`/groups/${group.id}`}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Lihat Detail
+                            </Link>
+                          </DropdownMenuItem>
+                          {/* ------------------------------------- */}
                           <DropdownMenuItem
                             onClick={() => handleOpenEditDialog(group)}
                           >

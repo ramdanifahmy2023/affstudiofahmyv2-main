@@ -16,17 +16,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2 } from "lucide-react";
+import { PlusCircle, MoreHorizontal, User, Mail, Phone, Shield, Loader2, Eye } from "lucide-react"; // <-- 2. IMPORT EYE ICON
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AddEmployeeDialog } from "@/components/Employee/AddEmployeeDialog"; 
 import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog"; 
 import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; 
+import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog"; // <-- 3. IMPORT MODAL BARU
 
 // Tipe data gabungan dari profiles, employees, dan groups
 export interface EmployeeProfile {
@@ -52,6 +54,7 @@ const Employees = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false); // <-- 4. STATE BARU UNTUK MODAL DETAIL
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
 
   // Fungsi untuk mengambil data karyawan
@@ -122,6 +125,11 @@ const Employees = () => {
   };
 
   // Handler untuk membuka dialog
+  const handleOpenDetail = (employee: EmployeeProfile) => {
+    setSelectedEmployee(employee);
+    setIsDetailOpen(true);
+  };
+
   const handleOpenEdit = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsEditDialogOpen(true);
@@ -137,6 +145,7 @@ const Employees = () => {
     setIsAddDialogOpen(false);
     setIsEditDialogOpen(false);
     setIsAlertOpen(false);
+    setIsDetailOpen(false); // <-- 5. TAMBAHKAN TUTUP MODAL DETAIL
     setSelectedEmployee(null);
   };
 
@@ -248,6 +257,13 @@ const Employees = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent>
+                                {/* --- 6. TAMBAHKAN MENU ITEM BARU --- */}
+                                <DropdownMenuItem onClick={() => handleOpenDetail(emp)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  Lihat Detail
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {/* --------------------------------- */}
                                 <DropdownMenuItem onClick={() => handleOpenEdit(emp)}>
                                   Edit
                                 </DropdownMenuItem>
@@ -304,6 +320,16 @@ const Employees = () => {
           employeeToDelete={selectedEmployee}
         />
       )}
+      
+      {/* --- 7. RENDER MODAL DETAIL BARU --- */}
+      {selectedEmployee && (
+        <EmployeeDetailDialog
+          isOpen={isDetailOpen}
+          onClose={closeAllModals}
+          employee={selectedEmployee}
+        />
+      )}
+      {/* ----------------------------------- */}
     </MainLayout>
   );
 };
