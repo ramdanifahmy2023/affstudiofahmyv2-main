@@ -172,9 +172,9 @@ export const EditGroupDialog = ({
         group_id_to_edit: group.id,
         new_name: name,
         new_desc: description,
-        new_employee_ids: selectedEmployees,
-        new_device_ids: selectedDevices,
-        new_account_ids: selectedAccounts,
+        new_employee_ids: selectedEmployees, // Array ID
+        new_device_ids: selectedDevices,     // Array ID
+        new_account_ids: selectedAccounts,   // Array ID
       });
 
       if (error) throw error;
