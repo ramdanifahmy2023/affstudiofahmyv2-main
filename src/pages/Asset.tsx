@@ -50,6 +50,8 @@ import { AddAssetDialog } from "@/components/Asset/AddAssetDialog";
 import { EditAssetDialog } from "@/components/Asset/EditAssetDialog"; 
 import { DeleteAssetAlert } from "@/components/Asset/DeleteAssetAlert"; 
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/useExport";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Pastikan Select diimpor
 
 
 // Tipe data dari Supabase (Query lengkap untuk Edit)
@@ -64,13 +66,13 @@ export type AssetData = {
   notes: string | null; 
 };
 
-// Tipe untuk data Pie Chart [cite: 101]
+// Tipe untuk data Pie Chart
 type ChartData = {
   name: string;
   value: number;
 };
 
-// Warna Chart [cite: 25]
+// Warna Chart 
 const COLORS = [
   "hsl(var(--chart-1))",
   "hsl(var(--chart-2))",
@@ -87,6 +89,11 @@ const Assets = () => {
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // --- STATE BARU UNTUK FILTER KATEGORI ---
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  // ------------------------------------------
 
 
   // --- State untuk Modal/Dialog ---
@@ -95,6 +102,10 @@ const Assets = () => {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
   // ---------------------------------
+  
+  // INISIALISASI HOOK EXPORT
+  const { exportToPDF, exportToCSV, isExporting } = useExport();
+
 
   const canManageAssets =
     profile?.role === "superadmin" || profile?.role === "admin";
@@ -117,7 +128,7 @@ const Assets = () => {
   const fetchAssets = async () => {
     setLoading(true);
     try {
-      // Query semua field yg dibutuhkan untuk Edit
+      // Query semua field yg dibutuhkan untuk Edit, dan tambahkan join untuk Assigned To
       const { data, error } = await supabase
         .from("assets")
         .select(`
@@ -128,21 +139,38 @@ const Assets = () => {
           purchase_price,
           condition,
           assigned_to,
-          notes 
+          notes,
+          employees ( profiles ( full_name ) ) 
         `)
         .order("purchase_date", { ascending: false });
 
       if (error) throw error;
-      setAssets(data || []);
       
-      const dataForFilter = data || [];
+      // Map data untuk menyertakan nama karyawan
+      const mappedData = data.map((asset: any) => ({
+          ...asset,
+          assigned_to_name: asset.employees?.profiles?.full_name || '-',
+      })) as (AssetData & { assigned_to_name: string })[]; // Gabungkan tipe data
+
+      setAssets(mappedData);
       
-      // Hitung breakdown untuk Pie Chart [cite: 101]
+      const dataForFilter = mappedData;
+      
+      // KUMPULKAN KATEGORI UNIK
+      const uniqueCategories = Array.from(new Set(dataForFilter.map(d => d.category)));
+      setAvailableCategories(uniqueCategories.sort());
+      
+      // Hitung breakdown untuk Pie Chart berdasarkan TOTAL NILAI ASET
       const breakdown: { [key: string]: number } = {};
       dataForFilter.forEach(asset => {
-        breakdown[asset.category] = (breakdown[asset.category] || 0) + 1;
+        // Menggunakan purchase_price (yang sudah merupakan nilai total)
+        breakdown[asset.category] = (breakdown[asset.category] || 0) + asset.purchase_price; 
       });
-      setChartData(Object.entries(breakdown).map(([name, value]) => ({ name, value })));
+      
+      setChartData(Object.entries(breakdown)
+          .filter(([, value]) => value > 0)
+          .map(([name, value]) => ({ name, value }))
+      );
       
       // Update filtered list (setelah fetch)
       setFilteredAssets(dataForFilter);
@@ -163,14 +191,24 @@ const Assets = () => {
     fetchAssets();
   }, []);
   
-  // Efek untuk filtering lokal
+  // ✅ LOGIKA FILTER LOKAL YANG DIPERBARUI
   useEffect(() => {
-    const results = assets.filter((asset) =>
-      asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.category.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const results = assets
+      .filter((asset) => {
+        // Filter berdasarkan Kategori
+        if (categoryFilter !== 'all' && asset.category !== categoryFilter) {
+          return false;
+        }
+
+        // Filter berdasarkan Search Term (Nama atau Kategori)
+        return (
+          asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          asset.category.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      });
+      
     setFilteredAssets(results);
-  }, [searchTerm, assets]);
+  }, [searchTerm, categoryFilter, assets]);
 
 
   // --- Fungsi helper untuk buka modal ---
@@ -192,10 +230,46 @@ const Assets = () => {
      setSelectedAsset(null);
      fetchAssets();
   };
-  // -------------------------------------
+  
+  // FUNGSI EXPORT BARU
+  const exportAssets = (type: 'pdf' | 'csv') => {
+    const columns = [
+      { header: 'Nama Aset', dataKey: 'name' },
+      { header: 'Kategori', dataKey: 'category' },
+      { header: 'Tgl Beli', dataKey: 'purchase_date_formatted' },
+      { header: 'Harga Beli (Rp)', dataKey: 'purchase_price_formatted' },
+      { header: 'Kondisi', dataKey: 'condition' },
+      { header: 'Diberikan Kepada', dataKey: 'assigned_to_name' },
+      { header: 'Catatan', dataKey: 'notes' },
+    ];
+    
+    // Siapkan data untuk export
+    const exportData = filteredAssets.map(a => ({
+        ...a,
+        purchase_date_formatted: formatDate(a.purchase_date),
+        purchase_price_formatted: formatCurrency(a.purchase_price), 
+        condition: a.condition || '-',
+        notes: a.notes || '-',
+        // assigned_to_name sudah ditambahkan saat fetch
+    }));
 
-  const totalValue = assets.reduce((acc, asset) => acc + (asset.purchase_price || 0), 0); // [cite: 99]
-  const totalItems = assets.length; // [cite: 100]
+    const options = {
+        filename: 'Laporan_Inventaris_Aset',
+        title: 'Laporan Inventaris Aset Perusahaan',
+        data: exportData,
+        columns,
+    };
+    
+    if (type === 'pdf') {
+        exportToPDF(options);
+    } else {
+        exportToCSV(options);
+    }
+  };
+
+
+  const totalValue = assets.reduce((acc, asset) => acc + (asset.purchase_price || 0), 0);
+  const totalItems = assets.length; 
 
   return (
     <MainLayout>
@@ -221,7 +295,7 @@ const Assets = () => {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <DollarSign className="h-4 w-4" />
-                Total Nilai Aset [cite: 99]
+                Total Nilai Aset 
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -234,7 +308,7 @@ const Assets = () => {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Archive className="h-4 w-4" />
-                Jumlah Item Aset [cite: 100]
+                Jumlah Item Aset
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -247,7 +321,7 @@ const Assets = () => {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <PieIcon className="h-4 w-4" />
-                Jumlah Kategori
+                Breakdown Kategori
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -263,6 +337,19 @@ const Assets = () => {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex flex-col sm:flex-row items-center gap-4">
+                {/* ✅ FILTER KATEGORI BARU */}
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="w-full sm:w-40">
+                    <SelectValue placeholder="Semua Kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Kategori</SelectItem>
+                    {availableCategories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* --------------------------- */}
                 <div className="relative flex-1 w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -272,10 +359,23 @@ const Assets = () => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Button variant="outline" className="gap-2 w-full sm:w-auto" disabled>
-                  <Download className="h-4 w-4" />
-                  Export (Soon)
-                </Button>
+                 {/* DROP DOWN MENU UNTUK EXPORT */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-2" disabled={isExporting || filteredAssets.length === 0}>
+                          <Download className="h-4 w-4" />
+                          {isExporting ? 'Mengekspor...' : 'Export'}
+                      </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportAssets('pdf')} disabled={isExporting}>
+                          Export PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportAssets('csv')} disabled={isExporting}>
+                          Export CSV
+                      </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardHeader>
             <CardContent>
@@ -291,6 +391,7 @@ const Assets = () => {
                         <TableHead>Tanggal Beli</TableHead>
                         <TableHead>Nama Aset</TableHead>
                         <TableHead>Kategori</TableHead>
+                        <TableHead>Diberikan Kepada</TableHead>
                         <TableHead>Kondisi</TableHead>
                         <TableHead className="text-right">Total Harga</TableHead>
                         <TableHead className="text-center">Actions</TableHead>
@@ -299,8 +400,8 @@ const Assets = () => {
                     <TableBody>
                       {filteredAssets.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center h-24">
-                            {searchTerm ? "Aset tidak ditemukan." : "Belum ada data aset."}
+                          <TableCell colSpan={7} className="text-center h-24">
+                            {searchTerm || categoryFilter !== 'all' ? "Aset tidak ditemukan." : "Belum ada data aset."}
                           </TableCell>
                         </TableRow>
                       )}
@@ -310,6 +411,9 @@ const Assets = () => {
                           <TableCell className="font-medium">{asset.name}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{asset.category}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {(asset as any).assigned_to_name || '-'}
                           </TableCell>
                           <TableCell>
                             <Badge 
@@ -360,7 +464,7 @@ const Assets = () => {
           {/* Pie Chart */}
           <Card className="lg:col-span-1">
              <CardHeader>
-               <CardTitle>Breakdown Aset by Kategori</CardTitle> [cite: 101]
+               <CardTitle>Breakdown Aset by Nilai (Rp)</CardTitle> 
              </CardHeader>
              <CardContent>
                <ResponsiveContainer width="100%" height={300}>
@@ -385,7 +489,7 @@ const Assets = () => {
                       border: "1px solid hsl(var(--border))",
                       borderRadius: "var(--radius)",
                     }}
-                    formatter={(value: number) => `${value} item`}
+                    formatter={(value: number) => `${formatCurrency(value)}`} // Menampilkan nilai Rupiah
                   />
                    <Legend />
                  </PieChart>
@@ -406,20 +510,24 @@ const Assets = () => {
            />
            
            {/* Edit Aset Dialog */}
-           <EditAssetDialog
-             open={isEditModalOpen}
-             onOpenChange={setIsEditModalOpen}
-             asset={selectedAsset}
-             onSuccess={handleSuccess}
-           />
+           {selectedAsset && (
+             <EditAssetDialog
+               open={isEditModalOpen}
+               onOpenChange={setIsEditModalOpen}
+               asset={selectedAsset}
+               onSuccess={handleSuccess}
+             />
+           )}
            
            {/* Delete Aset Alert */}
-           <DeleteAssetAlert
-             open={isDeleteAlertOpen}
-             onOpenChange={setIsDeleteAlertOpen}
-             asset={selectedAsset}
-             onSuccess={handleSuccess}
-           />
+           {selectedAsset && (
+             <DeleteAssetAlert
+               open={isDeleteAlertOpen}
+               onOpenChange={setIsDeleteAlertOpen}
+               asset={selectedAsset}
+               onSuccess={handleSuccess}
+             />
+           )}
          </>
        )}
        {/* --------------------------- */}

@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+// import jsPDF from 'jspdf'; // DIHAPUS
+// import 'jspdf-autotable'; // DIHAPUS
 
 declare module 'jspdf' {
   interface jsPDF {
@@ -24,6 +24,10 @@ export const useExport = () => {
   const exportToPDF = async (options: ExportOptions) => {
     setIsExporting(true);
     try {
+      // ✅ PERBAIKAN: Gunakan Dynamic Import untuk memaksa pemuatan (Loading is async)
+      const { default: jsPDF } = await import('jspdf');
+      await import('jspdf-autotable'); 
+      
       const doc = new jsPDF();
       
       // Header perusahaan
@@ -42,6 +46,7 @@ export const useExport = () => {
       doc.text(options.title, 14, 58);
       
       // Tabel data
+      // autoTable sekarang harus tersedia karena import di atas sudah dieksekusi
       doc.autoTable({
         head: [options.columns.map(col => col.header)],
         body: options.data.map(row => 
