@@ -19,7 +19,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator, // <-- 1. IMPORT SEPARATOR
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -31,7 +31,7 @@ import { SetTargetDialog } from "@/components/KPI/SetTargetDialog";
 import { EditTargetDialog } from "@/components/KPI/EditTargetDialog"; 
 import { DeleteTargetAlert } from "@/components/KPI/DeleteTargetAlert"; 
 import { cn } from "@/lib/utils";
-import { useExport } from "@/hooks/useExport"; // <-- 2. IMPORT USE EXPORT
+import { useExport } from "@/hooks/useExport"; 
 
 // Tipe data dari Supabase
 export type KpiData = {
@@ -78,7 +78,7 @@ const KPI = () => {
     delete: null,
   });
 
-  // --- 3. INISIALISASI HOOK EXPORT ---
+  // INISIALISASI HOOK EXPORT
   const { exportToPDF, exportToCSV, isExporting } = useExport();
 
   const canManage = profile?.role === "superadmin" || profile?.role === "leader";
@@ -101,19 +101,24 @@ const KPI = () => {
     } catch (e) { return "-"; }
   }
   
-  // Kalkulasi KPI
+  // --- FUNGSI UTAMA: KALKULASI KPI ---
   const calculateKpi = (data: KpiData[]): CalculatedKpi[] => {
     return data.map(item => {
+      // Realisasi (%) = (Aktual / Target) * 100
       const sales_pct = (item.sales_target > 0) ? ((item.actual_sales || 0) / item.sales_target) * 100 : 0;
       const commission_pct = (item.commission_target > 0) ? ((item.actual_commission || 0) / item.commission_target) * 100 : 0;
       const attendance_pct = (item.attendance_target > 0) ? ((item.actual_attendance || 0) / item.attendance_target) * 100 : 0;
+      
+      // Total KPI = (Omset x 0.5) + (Komisi x 0.3) + (Absensi x 0.2)
       const total_kpi = (sales_pct * 0.5) + (commission_pct * 0.3) + (attendance_pct * 0.2);
       
       return {
         ...item,
+        // Cap di 100% untuk Realisasi Individu
         sales_pct: Math.min(sales_pct, 100),
         commission_pct: Math.min(commission_pct, 100),
         attendance_pct: Math.min(attendance_pct, 100),
+        // Cap total KPI di 100%
         total_kpi: Math.min(total_kpi, 100), 
       };
     });
@@ -127,6 +132,7 @@ const KPI = () => {
         return;
     }
     try {
+      // Ambil data KPI targets, dan join ke employees (untuk nama)
       const { data, error } = await supabase
         .from("kpi_targets")
         .select(`
@@ -148,6 +154,7 @@ const KPI = () => {
       if (error) throw error;
       
       const calculatedData = calculateKpi(data as any);
+      // Urutkan berdasarkan total KPI tertinggi (Ranking)
       calculatedData.sort((a, b) => b.total_kpi - a.total_kpi);
       setKpiData(calculatedData);
 
@@ -163,11 +170,19 @@ const KPI = () => {
     if (profile) fetchKpiData();
   }, [profile]);
   
+  // Helper untuk menentukan warna Progress Bar
   const getKpiColor = (kpi: number) => {
     if (kpi >= 100) return "bg-success";
     if (kpi >= 70) return "bg-warning";
     return "bg-destructive";
   };
+  
+  // Helper untuk menentukan warna teks KPI
+  const getKpiTextColor = (kpi: number) => {
+     if (kpi >= 100) return "text-success";
+     if (kpi >= 70) return "text-warning";
+     return "text-destructive";
+  }
   
   const handleEditClick = (kpi: KpiData) => {
     setDialogs({ ...dialogs, edit: kpi });
@@ -186,7 +201,7 @@ const KPI = () => {
     item.employees?.profiles?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // --- 4. FUNGSI HANDLE EXPORT ---
+  // --- FUNGSI HANDLE EXPORT ---
   const handleExport = (type: 'pdf' | 'csv') => {
     const columns = [
       { header: 'Rank', dataKey: 'rank' },
@@ -272,7 +287,6 @@ const KPI = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              {/* --- 5. AKTIFKAN DROPDOWN EXPORT --- */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="gap-2" disabled={isExporting || filteredKpiData.length === 0}>
@@ -289,7 +303,6 @@ const KPI = () => {
                     </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {/* --------------------------------- */}
             </div>
           </CardHeader>
           <CardContent>
@@ -353,7 +366,7 @@ const KPI = () => {
                              value={item.total_kpi} 
                              className={cn("h-3 w-full", getKpiColor(item.total_kpi))} 
                            />
-                           <span className={cn("font-bold w-12 text-right", getKpiColor(item.total_kpi).replace('bg-', 'text-'))}>
+                           <span className={cn("font-bold w-12 text-right", getKpiTextColor(item.total_kpi))}>
                              {item.total_kpi.toFixed(1)}%
                            </span>
                         </div>

@@ -68,6 +68,7 @@ type DialogState = {
 
 // Helper untuk render konten
 const RenderContent = ({ item, isExpanded }: { item: ProcessedKnowledgeData, isExpanded: boolean }) => {
+  // --- KUNCI: Render IFRAME hanya jika isExpanded true ---
   if (item.type === "YouTube" && isExpanded) {
     return (
       <div className="aspect-video w-full">
@@ -131,6 +132,7 @@ const Knowledge = () => {
     edit: null,
     delete: null,
   });
+  // State untuk melacak item Accordion yang sedang dibuka
   const [expandedItem, setExpandedItem] = useState<string | null>(null); 
 
   // Cek hak akses
@@ -231,8 +233,8 @@ const Knowledge = () => {
   }
   
   const handleAccordionChange = (value: string) => {
-      // Logic untuk memastikan hanya satu item di-expand dan mengupdate state expandedItem
-      setExpandedItem(value);
+      // Toggle logic: Jika nilai yang sama diklik, tutup (set null)
+      setExpandedItem(value === expandedItem ? null : value);
   }
 
   return (
@@ -277,14 +279,14 @@ const Knowledge = () => {
                 <Accordion 
                     type="single" 
                     collapsible 
-                    value={expandedItem || undefined} // Kontrol item yang terbuka
+                    // Gunakan expandedItem sebagai value untuk mengontrol satu Accordion terbuka
+                    value={expandedItem || undefined} 
                     onValueChange={handleAccordionChange}
                 >
                   {Object.entries(groupedKnowledge).map(([category, items]) => (
                     <AccordionItem value={category} key={category}>
                       <AccordionTrigger 
                          className="text-xl font-semibold"
-                         // Logika handleAccordionChange di atas sudah mengurus toggle state expandedItem
                       >
                         {category} ({items.length})
                       </AccordionTrigger>

@@ -121,6 +121,7 @@ export const AddKnowledgeDialog = ({ open, onOpenChange, onSuccess }: AddKnowled
       const tagsArray = values.tags ? values.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
 
       // Menyimpan tipe konten ke dalam tags (untuk di proses saat fetch/edit)
+      // Ini adalah kunci untuk menentukan jenis embed saat render!
       const tagsWithTipe = [...tagsArray, `__type:${values.content_type}`];
 
       const { error } = await supabase
