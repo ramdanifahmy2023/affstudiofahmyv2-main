@@ -16,9 +16,8 @@ const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn, isLoading, user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate(); // <-- 1. Panggil hook navigasi
+  const navigate = useNavigate();
 
-  // Redirect ke dashboard setelah login berhasil
   if (!isLoading && user) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -42,13 +41,11 @@ const LoginPage: React.FC = () => {
         
         toast({
             title: "Login Berhasil 🎉",
-            description: "Anda berhasil masuk ke FAHMYID Digital Marketing System.",
+            description: "Anda berhasil masuk ke FINTRACK Affiliate System.",
             duration: 2000,
         });
         
-        // --- 2. PERBAIKAN DI SINI: Arahkan ke dashboard ---
         navigate("/dashboard");
-        // ------------------------------------------
     
     } catch (error: any) {
         let errorMessage = "Terjadi kesalahan saat login. Silakan coba lagi.";
@@ -77,35 +74,42 @@ const LoginPage: React.FC = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <Zap className="h-10 w-10 text-primary mx-auto mb-2" />
-          <CardTitle className="text-2xl font-bold text-primary">FAHMYID DMS</CardTitle>
-          <CardDescription>
-            Sistem Manajemen Affiliate Marketing
+        <CardHeader className="text-center space-y-2 sm:space-y-4">
+          <Zap className="h-10 w-10 sm:h-12 sm:w-12 text-primary mx-auto" />
+          <CardTitle className="text-xl sm:text-2xl font-bold text-primary">
+            FINTRACK Affiliate Sytem
+          </CardTitle>
+          <CardDescription className="text-sm sm:text-base">
+            Sistem Manajemen Affiliate Marketing by FahmyID Group
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6">
           {(isLoading && !user) || isSubmitting ? (
-             <div className="flex justify-center items-center h-40">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="ml-2 text-sm text-gray-500">Memproses...</span>
+             <div className="flex flex-col justify-center items-center h-40 space-y-2">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="text-sm text-gray-500">Memproses...</span>
              </div>
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-sm sm:text-base">
+                  Email
+                </Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="email@fahmy.id"
+                  placeholder="emailkamu@gmail.com"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isSubmitting}
+                  className="h-10 sm:h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-sm sm:text-base">
+                  Password
+                </Label>
                 <Input
                   id="password"
                   type="password"
@@ -113,24 +117,30 @@ const LoginPage: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isSubmitting}
+                  className="h-10 sm:h-11"
                 />
               </div>
               <Button 
                 type="submit" 
-                className="w-full bg-primary hover:bg-primary/90"
+                className="w-full bg-primary hover:bg-primary/90 h-10 sm:h-11 text-sm sm:text-base"
                 disabled={isSubmitting || isLoading}
               >
                 {isSubmitting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <span>Memproses...</span>
+                  </>
                 ) : (
-                  "Masuk ke Sistem"
+                  "Login Sekarang"
                 )}
               </Button>
             </form>
           )}
         </CardContent>
-        <CardFooter className="flex justify-center">
-            <p className="text-xs text-muted-foreground">© 2024 PT FAHMYID DIGITAL GROUP</p>
+        <CardFooter className="flex justify-center px-4 sm:px-6">
+            <p className="text-xs text-muted-foreground text-center">
+              © 2025 PT FAHMYID DIGITAL GROUP
+            </p>
         </CardFooter>
       </Card>
     </div>

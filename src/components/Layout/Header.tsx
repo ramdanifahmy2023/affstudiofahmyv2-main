@@ -13,8 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge"; // <-- 1. TAMBAHKAN IMPORT BADGE DI SINI
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,9 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useTheme } from "next-themes";
-import { Moon, Sun, Laptop, Bell } from "lucide-react"; // <-- 2. TAMBAHKAN IKON 'Bell'
+import { Moon, Sun, Laptop, Bell } from "lucide-react";
 
-// Komponen Toggle Tema
 const ModeToggle = () => {
   const { setTheme } = useTheme();
 
@@ -58,9 +56,7 @@ const ModeToggle = () => {
   );
 };
 
-// --- 3. TAMBAHKAN KOMPONEN NOTIFIKASI BARU ---
 const NotificationBell = () => {
-  // Data tiruan (fake data) sesuai permintaan blueprint
   const fakeNotifications = [
     {
       id: 1,
@@ -84,17 +80,15 @@ const NotificationBell = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-9 w-9 relative">
           <Bell className="h-5 w-5" />
-          {/* Indikator titik merah untuk notifikasi baru */}
           <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
           </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80" align="end">
+      <DropdownMenuContent className="w-80 max-w-[calc(100vw-2rem)]" align="end">
         <DropdownMenuLabel className="flex justify-between items-center">
           Notifikasi
-          {/* Di sinilah Badge digunakan */}
           <Badge variant="destructive" className="text-xs">
             {fakeNotifications.length} Baru
           </Badge>
@@ -123,10 +117,7 @@ const NotificationBell = () => {
     </DropdownMenu>
   );
 };
-// --- AKHIR KOMPONEN NOTIFIKASI ---
 
-
-// Komponen UserNav (Menu Avatar)
 const UserNav = () => {
   const { user, profile, signOut } = useAuth();
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -154,10 +145,10 @@ const UserNav = () => {
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none">
+              <p className="text-sm font-medium leading-none truncate">
                 {profile?.full_name}
               </p>
-              <p className="text-xs leading-none text-muted-foreground">
+              <p className="text-xs leading-none text-muted-foreground truncate">
                 {user?.email}
               </p>
             </div>
@@ -180,9 +171,8 @@ const UserNav = () => {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Dialog Konfirmasi Logout */}
       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Apakah Anda yakin ingin keluar?</AlertDialogTitle>
           </AlertDialogHeader>
@@ -196,17 +186,12 @@ const UserNav = () => {
   );
 };
 
-// Ini adalah header versi desktop saja
 export const Header = () => {
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-end border-b bg-background px-8">
-      <div className="flex items-center gap-1">
-        {/* --- 4. TAMBAHKAN KOMPONEN DI SINI --- */}
-        <NotificationBell />
-        {/* ---------------------------------- */}
-        <ModeToggle />
-        <UserNav />
-      </div>
-    </header>
+    <div className="flex items-center gap-1">
+      <NotificationBell />
+      <ModeToggle />
+      <UserNav />
+    </div>
   );
 };
