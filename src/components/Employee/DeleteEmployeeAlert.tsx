@@ -11,9 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client"; 
+import { Loader2, AlertTriangle } from "lucide-react";
 import { EmployeeProfile } from "@/pages/Employees";
 
 interface DeleteEmployeeAlertProps {
@@ -23,37 +23,52 @@ interface DeleteEmployeeAlertProps {
   employeeToDelete: EmployeeProfile | null;
 }
 
-export const DeleteEmployeeAlert = ({
-  isOpen,
-  onClose,
-  onSuccess,
-  employeeToDelete,
-}: DeleteEmployeeAlertProps) => {
+export const DeleteEmployeeAlert = ({ isOpen, onClose, onSuccess, employeeToDelete }: DeleteEmployeeAlertProps) => {
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
   const handleDelete = async () => {
     if (!employeeToDelete) return;
 
     setLoading(true);
-    toast.info(`Menonaktifkan akun ${employeeToDelete.full_name}...`);
+    toast({
+      title: "Proses Menonaktifkan",
+      description: `Menonaktifkan akun ${employeeToDelete.full_name}...`,
+    });
 
     try {
-      // Kita lakukan 'Soft Delete' dengan mengubah status di tabel 'profiles'
-      // Menghapus user dari 'auth.users' memerlukan hak admin service_role
-      // dan sebaiknya dilakukan via Edge Function.
-      // Untuk simplifikasi, kita update statusnya saja menjadi 'inactive'.
-      const { error } = await supabase
+      // Step 1: Disable auth user via Edge Function (FIX Issue #8)
+      // Ini mencegah user login dengan kredensial lama mereka.
+      const { data: disableData, error: disableError } = await supabase.functions.invoke("disable-user", {
+        body: {
+          // ⚠️ PENTING: Gunakan profile_id karena itu adalah ID user di tabel auth.users
+          userId: employeeToDelete.profile_id, 
+          reason: "Employee account deactivated by admin",
+        },
+      });
+
+      if (disableError || disableData?.success === false) {
+        console.warn("Gagal menonaktifkan akun Auth. Melanjutkan dengan soft delete Profile.", disableError || disableData?.error);
+      }
+
+      // Step 2: Update profile status to inactive (Soft Delete di DB)
+      const { error: profileError } = await supabase
         .from("profiles")
         .update({ status: "inactive" })
         .eq("id", employeeToDelete.profile_id);
 
-      if (error) throw error;
+      if (profileError) throw profileError;
 
-      toast.success("Karyawan berhasil dinonaktifkan (dihapus).");
+      toast({
+        title: "Karyawan Dinonaktifkan",
+        description: `Akun ${employeeToDelete.full_name} berhasil dimatikan dan tidak bisa login lagi.`,
+        variant: "default",
+      });
       onSuccess();
-      onClose();
     } catch (error: any) {
-      toast.error("Gagal menghapus karyawan.", {
+      toast({
+        variant: "destructive",
+        title: "Gagal Menonaktifkan Karyawan",
         description: error.message,
       });
     } finally {
@@ -65,24 +80,24 @@ export const DeleteEmployeeAlert = ({
     <AlertDialog open={isOpen} onOpenChange={onClose}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Anda yakin ingin menghapus?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Tindakan ini akan menonaktifkan akun karyawan{" "}
-            <strong>{employeeToDelete?.full_name}</strong>.
-            Data tidak dapat dikembalikan, namun akun hanya akan berstatus 'inactive'.
-          </AlertDialogDescription>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+            <AlertDialogTitle>Konfirmasi Menonaktifkan Karyawan</AlertDialogTitle>
+          </div>
         </AlertDialogHeader>
+        <AlertDialogDescription>
+          Anda yakin ingin **menonaktifkan** akun **{employeeToDelete?.full_name}**?
+          Tindakan ini akan mengubah status akun menjadi **Inactive** dan **mencegah** karyawan tersebut login kembali.
+        </AlertDialogDescription>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onClose} disabled={loading}>
-            Batal
-          </AlertDialogCancel>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
+          <AlertDialogCancel disabled={loading}>Batal</AlertDialogCancel>
+          <AlertDialogAction 
+            onClick={handleDelete} 
+            className="bg-destructive hover:bg-destructive/90"
             disabled={loading}
           >
-            {loading ? "Menghapus..." : "Ya, Hapus"}
-          </Button>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Ya, Nonaktifkan'}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
