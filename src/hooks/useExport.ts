@@ -34,9 +34,9 @@ export const useExport = () => {
 
       // Header perusahaan
       doc.setFontSize(16);
-      doc.text('PT FAHMYID', 14, 22);
+      doc.text('Fintrack Affiliate', 14, 22);
       doc.setFontSize(12);
-      doc.text('Affiliate Marketing Management System', 14, 32);
+      doc.text('Affiliate Marketing Management System By FahmyID', 14, 32);
       doc.setFontSize(10);
       doc.text(`Tanggal: ${new Date().toLocaleDateString('id-ID')}`, 14, 42);
 
