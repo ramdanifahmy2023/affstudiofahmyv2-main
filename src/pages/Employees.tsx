@@ -50,6 +50,8 @@ import { EditEmployeeDialog } from "@/components/Employee/EditEmployeeDialog";
 import { DeleteEmployeeAlert } from "@/components/Employee/DeleteEmployeeAlert"; 
 import { EmployeeDetailDialog } from "@/components/Employee/EmployeeDetailDialog";
 import { useExport } from "@/hooks/useExport"; 
+// --- MODIFIKASI: Tambahkan useSearchParams ---
+import { useSearchParams } from "react-router-dom"; 
 
 // Tipe data gabungan - DIPERBARUI
 export interface EmployeeProfile {
@@ -85,16 +87,21 @@ const Employees = () => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   
-  // --- 3. STATE BARU UNTUK FILTER ---
+  // --- PERUBAHAN: Gunakan useSearchParams untuk mengelola state dialog Add ---
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Dapatkan status dialog dari URL
+  const isAddDialogOpen = searchParams.get('dialog') === 'add-employee';
+  // -------------------------------------------------------------------------
+  
+  // State filter
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGroup, setFilterGroup] = useState("all");
   const [filterRole, setFilterRole] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
-  // ------------------------------------
   
-  // State untuk dialog
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  // State untuk dialog lainnya (tetap useState)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false); 
@@ -166,10 +173,8 @@ const Employees = () => {
         status: emp.profiles.status,
         group_name: emp.groups?.name || "Belum ada group",
         group_id: emp.group_id, 
-        // --- AMBIL DATA BARU ---
         date_of_birth: emp.profiles.date_of_birth,
         address: emp.profiles.address,
-        // ------------------------
       }));
 
       setEmployees(formattedData);
@@ -195,7 +200,6 @@ const Employees = () => {
 
   // --- 6. USEEFFECT UNTUK MEMANGGIL FETCH DATA SAAT FILTER BERUBAH ---
   useEffect(() => {
-    // Kita panggil fetchEmployees di sini
     fetchEmployees(searchTerm, filterGroup, filterRole, filterStatus);
   }, [fetchEmployees, searchTerm, filterGroup, filterRole, filterStatus]);
 
@@ -208,7 +212,15 @@ const Employees = () => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
-  // Handlers untuk Dialog (Tetap sama)
+  // --- HANDLER BARU: Buka Add Dialog dengan URL Parameter ---
+  const handleOpenAdd = () => {
+    setSearchParams(prev => {
+        prev.set('dialog', 'add-employee'); // <-- SET URL PARAMETER
+        return prev;
+    }, { replace: true });
+  }
+
+  // Handlers untuk Dialog (Modifikasi closeAllModals)
   const handleOpenDetail = (employee: EmployeeProfile) => {
     setSelectedEmployee(employee);
     setIsDetailOpen(true);
@@ -221,13 +233,23 @@ const Employees = () => {
     setSelectedEmployee(employee);
     setIsAlertOpen(true);
   };
+  
   const closeAllModals = () => {
-    setIsAddDialogOpen(false);
+    // Hapus query parameter 'dialog' jika dialog Add sedang dibuka
+    if (isAddDialogOpen) {
+        setSearchParams(prev => {
+            prev.delete('dialog'); // <-- HAPUS URL PARAMETER
+            return prev;
+        }, { replace: true });
+    }
+    
+    // Logika penutupan modal lain tetap sama
     setIsEditDialogOpen(false);
     setIsAlertOpen(false);
     setIsDetailOpen(false); 
     setSelectedEmployee(null);
   };
+  
   const handleSuccess = () => {
     closeAllModals();
     // Panggil ulang fetch dengan filter saat ini
@@ -241,10 +263,8 @@ const Employees = () => {
       { header: 'Jabatan', dataKey: 'position' },
       { header: 'Email', dataKey: 'email' },
       { header: 'No. HP', dataKey: 'phone' },
-      // --- TAMBAHAN DI EXPORT ---
       { header: 'Alamat', dataKey: 'address' },
       { header: 'Tgl Lahir', dataKey: 'date_of_birth' },
-      // --------------------------
       { header: 'Grup', dataKey: 'group_name' },
       { header: 'Status', dataKey: 'status' },
       { header: 'Role', dataKey: 'role' },
@@ -254,10 +274,8 @@ const Employees = () => {
         ...emp,
         position: emp.position || '-',
         phone: emp.phone || '-',
-        // --- HANDLE NULL DI EXPORT ---
         address: emp.address || '-',
         date_of_birth: emp.date_of_birth || '-',
-        // -----------------------------
     }));
 
     const options = {
@@ -303,7 +321,7 @@ const Employees = () => {
               </DropdownMenuContent>
             </DropdownMenu>
             {canManage && (
-              <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)}>
+              <Button className="gap-2" onClick={handleOpenAdd}> {/* <-- Panggil Handler Baru */}
                 <PlusCircle className="h-4 w-4" />
                 Tambah Karyawan
               </Button>
