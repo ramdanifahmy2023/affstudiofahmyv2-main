@@ -1,4 +1,4 @@
-// src/pages/Asset.tsx
+// File: ramdanifahmy2023/affstudiofahmyv2-main/affstudiofahmyv2-main-0cf4e2de727adf0e0171efcb1d3ba596c76c8cce/src/pages/Asset.tsx
 
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
@@ -84,8 +84,8 @@ const COLORS = [
 const Assets = () => {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const [assets, setAssets] = useState<AssetData[]>([]);
-  const [filteredAssets, setFilteredAssets] = useState<AssetData[]>([]);
+  const [assets, setAssets] = useState<AssetData[]>([]); // Master list
+  const [filteredAssets, setFilteredAssets] = useState<AssetData[]>([]); // List yang ditampilkan
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -237,7 +237,7 @@ const Assets = () => {
       { header: 'Nama Aset', dataKey: 'name' },
       { header: 'Kategori', dataKey: 'category' },
       { header: 'Tgl Beli', dataKey: 'purchase_date_formatted' },
-      { header: 'Harga Beli (Rp)', dataKey: 'purchase_price_formatted' },
+      { header: 'Total Harga (Rp)', dataKey: 'purchase_price_formatted' }, // Changed Header
       { header: 'Kondisi', dataKey: 'condition' },
       { header: 'Diberikan Kepada', dataKey: 'assigned_to_name' },
       { header: 'Catatan', dataKey: 'notes' },
@@ -393,7 +393,7 @@ const Assets = () => {
                         <TableHead>Kategori</TableHead>
                         <TableHead>Diberikan Kepada</TableHead>
                         <TableHead>Kondisi</TableHead>
-                        <TableHead className="text-right">Total Harga</TableHead>
+                        <TableHead className="text-right">Total Harga</TableHead> {/* <-- Simplified Header */}
                         <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>

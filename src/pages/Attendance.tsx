@@ -1,4 +1,4 @@
-// src/pages/Attendance.tsx
+// File: ramdanifahmy2023/affstudiofahmyv2-main/affstudiofahmyv2-main-0cf4e2de727adf0e0171efcb1d3ba596c76c8cce/src/pages/Attendance.tsx
 
 import { useState, useEffect, useCallback } from "react";
 import { MainLayout } from "@/components/Layout/MainLayout";
@@ -31,7 +31,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, subDays } from "date-fns";
+import { format, subDays, intervalToDuration } from "date-fns"; // Import intervalToDuration
 import { cn } from "@/lib/utils";
 
 
@@ -75,6 +75,27 @@ const Attendance = () => {
     const formatDateOnly = (dateString: string) => {
         if (!dateString) return '-';
         return format(new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`), 'dd MMM yyyy');
+    }
+    // --- HELPER BARU: HITUNG DURASI ---
+    const calculateDuration = (checkIn: string | null, checkOut: string | null) => {
+        if (!checkIn || !checkOut) return '-';
+        
+        const start = new Date(checkIn);
+        const end = new Date(checkOut);
+        
+        if (start.getTime() > end.getTime()) return '-';
+        
+        const duration = intervalToDuration({ start, end });
+        
+        let parts: string[] = [];
+        if (duration.hours && duration.hours > 0) {
+            parts.push(`${duration.hours} jam`);
+        }
+        if (duration.minutes && duration.minutes > 0) {
+            parts.push(`${duration.minutes} mnt`);
+        }
+        
+        return parts.length > 0 ? parts.join(' ') : 'Kurang dari 1 mnt';
     }
     // ---------------------------------
     
@@ -366,12 +387,13 @@ const Attendance = () => {
                                         <TableHead>Group</TableHead>
                                         <TableHead>Check-in</TableHead>
                                         <TableHead>Check-out</TableHead>
+                                        <TableHead>Durasi</TableHead> {/* <-- KOLOM BARU */}
                                         <TableHead>Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {managementRecords.length === 0 && (
-                                         <TableRow><TableCell colSpan={6} className="text-center h-24">Tidak ada data kehadiran staff ditemukan.</TableCell></TableRow>
+                                         <TableRow><TableCell colSpan={7} className="text-center h-24">Tidak ada data kehadiran staff ditemukan.</TableCell></TableRow>
                                     )}
                                     {managementRecords.map(record => (
                                         <TableRow key={record.id}>
@@ -380,6 +402,7 @@ const Attendance = () => {
                                             <TableCell>{record.group_name}</TableCell>
                                             <TableCell>{formatTime(record.check_in)}</TableCell>
                                             <TableCell>{formatTime(record.check_out)}</TableCell>
+                                            <TableCell>{calculateDuration(record.check_in, record.check_out)}</TableCell> {/* <-- DATA BARU */}
                                             <TableCell>
                                                  <Badge variant={record.status === 'present' ? 'default' : 'secondary'} className={cn(record.status === 'present' ? 'bg-success hover:bg-success/90' : '')}>
                                                     {record.status}
