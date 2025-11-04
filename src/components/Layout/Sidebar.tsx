@@ -71,7 +71,7 @@ export const Sidebar = ({ onClose }: SidebarProps) => {
   return (
     <>
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-6">
-        <h1 className="text-xl font-bold text-sidebar-primary">Fintrack Affiliate PRO</h1>
+        <h1 className="text-xl font-bold text-sidebar-primary">Fintrack Affiliate</h1>
         {/* Close button for mobile */}
         <Button
           variant="ghost"
