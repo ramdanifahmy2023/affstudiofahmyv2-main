@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base responsive utilities */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom responsive utilities */
+@layer utilities {
+  /* Safe area padding */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  /* ... dan seterusnya ... */
+}
+
+/* Mobile-specific overrides */
+@media (max-width: 768px) {
+  /* ... */
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */
